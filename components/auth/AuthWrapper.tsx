@@ -7,9 +7,9 @@ import { loginStart, loginSuccess, loginFailure, logout as logoutAction } from '
 import type { User as ReduxUser, Wallet as ReduxWallet } from '@/lib/slices/authSlice';
 import { AuthService } from '@/lib/services/authService';
 import AuthPage from './AuthPage';
-import WalletOnboarding from './WalletOnboarding';
+// Removed WalletOnboarding import - using simplified flow
 
-type AuthPageState = 'loading' | 'login' | 'onboarding' | 'authenticated';
+type AuthPageState = 'loading' | 'login' | 'authenticated';
 
 interface AuthWrapperProps {
   children: React.ReactNode;
@@ -61,26 +61,67 @@ export default function AuthWrapper({ children }: AuthWrapperProps) {
   };
 
   const handleAuthSuccess = (userData: any) => {
-    dispatch(loginSuccess({
-      user: userData.user || userData,
-      wallet: userData.wallet || {},
-      token: userData.token
-    }));
-    setAuthPageState('authenticated');
+    if (userData.isNewUser) {
+      // New user - create agent with the userId
+      handleCreateAgent(userData.user);
+    } else {
+      // Existing user - just login
+      dispatch(loginSuccess({
+        user: userData.user || userData,
+        wallet: userData.wallet || {},
+        token: userData.token
+      }));
+      setAuthPageState('authenticated');
+    }
   };
 
-  const handleNeedsOnboarding = (email: string) => {
-    setOnboardingEmail(email);
-    setAuthPageState('onboarding');
+  const handleCreateAgent = async (user: any) => {
+    try {
+      console.log('🚀 Creating Hedera agent for user:', user.id);
+      
+      // Create agent using the real userId
+      const agentData = await AuthService.createUserWithAgent({
+        email: user.email,
+        name: user.name,
+        agentName: `${user.name} Agent`,
+        userId: user.id // Pass the real userId
+      });
+      
+      dispatch(loginSuccess({
+        user: user,
+        wallet: agentData.wallet || {},
+        token: user.token
+      }));
+      setAuthPageState('authenticated');
+    } catch (error) {
+      console.error('Failed to create agent:', error);
+      setAuthPageState('login'); // Fall back to login page with error
+    }
   };
 
-  const handleOnboardingComplete = (userData: any) => {
-    dispatch(loginSuccess({
-      user: userData.user,
-      wallet: userData.wallet,
-      token: userData.token
-    }));
-    setAuthPageState('authenticated');
+  const handleNeedsOnboarding = async (email: string) => {
+    // Simplified flow: create user and agent directly
+    try {
+      console.log('🚀 Creating new user and agent for:', email);
+      
+      // Call the simplified onboarding API
+      const userData = await AuthService.createUserWithAgent({
+        email,
+        name: email.split('@')[0], // Use email prefix as default name
+        agentName: `${email.split('@')[0]} Agent`
+      });
+      
+      dispatch(loginSuccess({
+        user: userData.user,
+        wallet: userData.wallet || {},
+        token: userData.token
+      }));
+      setAuthPageState('authenticated');
+    } catch (error) {
+      console.error('Failed to create user and agent:', error);
+      // Fall back to login page with error
+      setAuthPageState('login');
+    }
   };
 
   const handleLogout = () => {
@@ -120,16 +161,7 @@ export default function AuthWrapper({ children }: AuthWrapperProps) {
     );
   }
 
-  // Show onboarding flow
-  if (authPageState === 'onboarding') {
-    return (
-      <WalletOnboarding
-        email={onboardingEmail}
-        onComplete={handleOnboardingComplete}
-        onBack={handleBackToLogin}
-      />
-    );
-  }
+  // Simplified flow: no separate onboarding component needed
 
   // User is authenticated - show the main app
   return (

@@ -446,7 +446,7 @@ Response format:
   }
 
   /**
-   * Execute transfer action using Hedera Agent Kit Service
+   * Execute transfer action (creates evaluation topics instead of HBAR transfers)
    * @param {string} message - User's message
    * @param {string} agentId - Agent ID
    * @param {Object} actionResult - Processed action result
@@ -454,7 +454,7 @@ Response format:
    */
   async executeTransferAction(message, agentId, actionResult) {
     try {
-      console.log('🔍 Parsing transfer request...');
+      console.log('🔍 Parsing action request for evaluation topic creation...');
       
       // Parse transfer details from the message
       const parseResult = await hederaAgentKitService.parseTransferRequest(message, agentId);
@@ -494,12 +494,13 @@ Response format:
       let transferResult;
       
       if (details.isHbarTransfer) {
-        // Execute HBAR transfer
-        transferResult = await hederaAgentKitService.transferHbar({
-          fromAgentId: agentId,
-          toAccountId: resolvedRecipient,
-          amount: details.amount,
-          memo: details.memo || `Transfer from ${parseResult.fromAgent.name}`
+        // Execute evaluation topic creation instead of HBAR transfer
+        transferResult = await hederaAgentKitService.createEvaluationTopic({
+          company: details.company || 'Default Company',
+          postId: details.postId || 'default-post-' + Date.now(),
+          candidateName: details.candidateName || details.recipient || 'Unknown Candidate',
+          candidateId: details.candidateId || 'candidate-' + Date.now(),
+          agentId: agentId
         });
       } else {
         // Execute token transfer
@@ -516,7 +517,7 @@ Response format:
         });
       }
       
-      console.log('✅ Transfer executed successfully!');
+      console.log('✅ Action executed successfully!');
       
       return {
         success: true,
@@ -528,19 +529,19 @@ Response format:
           recipientResolved: details.needsRecipientResolution
         },
         executionSummary: {
-          action: 'transfer',
-          amount: details.amount,
-          currency: details.currency,
-          from: parseResult.fromAgent.accountId,
-          to: resolvedRecipient,
+          action: 'evaluation_topic_creation',
+          topicId: transferResult.topicId,
+          company: transferResult.company || 'Default Company',
+          candidateName: transferResult.candidateName || details.recipient,
+          createdBy: transferResult.createdBy,
           transactionId: transferResult.transactionId,
-          status: transferResult.status
+          status: transferResult.success ? 'completed' : 'failed'
         },
         timestamp: new Date().toISOString()
       };
       
     } catch (error) {
-      console.error('❌ Transfer execution failed:', error);
+      console.error('❌ Action execution failed:', error);
       throw error;
     }
   }

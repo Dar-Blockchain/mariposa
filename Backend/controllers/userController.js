@@ -443,6 +443,46 @@ const getUserWithWallet = async (req, res) => {
   }
 };
 
+// @desc    Get user by email
+// @route   GET /api/users/by-email/:email
+// @access  Public
+const getUserByEmail = async (req, res) => {
+  try {
+    const { email } = req.params;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email parameter is required'
+      });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() }).select('-password');
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        user: user
+      }
+    });
+
+  } catch (error) {
+    console.error('Get user by email error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve user',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
@@ -451,5 +491,6 @@ module.exports = {
   updateUser,
   deleteUser,
   registerUserWithWallet,
-  getUserWithWallet
+  getUserWithWallet,
+  getUserByEmail
 }; 

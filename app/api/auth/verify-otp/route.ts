@@ -3,9 +3,9 @@ import { sign } from 'jsonwebtoken';
 
 // In production, use a proper database
 const otpStore = new Map<string, { code: string; expires: number; attempts: number }>();
-const userStore = new Map<string, any>(); // Simulated user database
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 export async function POST(request: NextRequest) {
   try {
@@ -80,14 +80,14 @@ export async function POST(request: NextRequest) {
       otpStore.delete(emailKey);
     }
 
-    // Check if user exists
-    const existingUser = userStore.get(emailKey);
+    // Check if user exists in backend database
+    const existingUser = await checkUserExists(email);
 
     if (existingUser) {
       // Existing user - generate JWT and return user data
       const token = sign(
         { 
-          userId: existingUser.id, 
+          userId: existingUser._id, 
           email: existingUser.email 
         },
         JWT_SECRET,
@@ -98,17 +98,60 @@ export async function POST(request: NextRequest) {
         message: 'Login successful',
         isNewUser: false,
         user: {
-          ...existingUser,
+          id: existingUser._id,
+          name: existingUser.name,
+          email: existingUser.email,
+          userType: existingUser.userType,
           token
         }
       });
     } else {
-      // New user - needs onboarding
-      return NextResponse.json({
-        message: 'Verification successful',
-        isNewUser: true,
-        email: email
-      });
+      // New user - create user in backend database
+      try {
+        console.log(`📧 Creating new user for email: ${email}`);
+        
+        const createUserResponse = await fetch(`${BACKEND_URL}/api/users/register-with-wallet`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: email.split('@')[0], // Use email prefix as name
+            email: email,
+            walletAddress: '0x0000000000000000000000000000000000000000', // Placeholder
+            privateKey: '0x0000000000000000000000000000000000000000000000000000000000000000', // Placeholder
+            userType: 'human'
+          }),
+        });
+
+        if (!createUserResponse.ok) {
+          throw new Error('Failed to create user in backend');
+        }
+
+        const userResult = await createUserResponse.json();
+        
+        if (userResult.success && userResult.data?.user) {
+          return NextResponse.json({
+            message: 'User created successfully',
+            isNewUser: true,
+            user: {
+              id: userResult.data.user._id,
+              name: userResult.data.user.name,
+              email: userResult.data.user.email,
+              userType: userResult.data.user.userType,
+              token: userResult.data.token
+            }
+          });
+        } else {
+          throw new Error(userResult.message || 'Failed to create user');
+        }
+      } catch (createError) {
+        console.error('❌ Failed to create user:', createError);
+        return NextResponse.json(
+          { message: 'Failed to create user account' },
+          { status: 500 }
+        );
+      }
     }
 
   } catch (error) {
@@ -122,14 +165,23 @@ export async function POST(request: NextRequest) {
 
 // Helper function to check if user exists in database
 async function checkUserExists(email: string) {
-  // In production, query your database
-  // Example:
-  /*
-  const user = await db.user.findUnique({
-    where: { email: email.toLowerCase() }
-  });
-  return user;
-  */
-  
-  return userStore.get(email.toLowerCase());
+  try {
+    // Query backend database for existing user
+    const response = await fetch(`${BACKEND_URL}/api/users/by-email/${encodeURIComponent(email)}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      return result.success ? result.data.user : null;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error checking user existence:', error);
+    return null;
+  }
 } 

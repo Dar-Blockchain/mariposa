@@ -317,6 +317,24 @@ const createAgentWithHedera = async (req, res) => {
 
     console.log(`🚀 Creating Hedera agent: ${name} (${agentType}) for user: ${userId}`);
 
+    // Validate userId is provided
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'userId is required'
+      });
+    }
+
+    // Verify user exists
+    const User = require('../models/User');
+    const existingUser = await User.findById(userId);
+    if (!existingUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found. Please create user first.'
+      });
+    }
+
     // Check if agent name already exists for this user
     const existingAgent = await Agent.findOne({ name, userId, isActive: true });
     if (existingAgent) {
@@ -401,6 +419,30 @@ const createAgentWithHedera = async (req, res) => {
     // Step 3: Get the updated agent with Hedera credentials
     const finalAgent = await Agent.findById(savedAgent._id).select('-hederaPrivateKey');
     
+    // Step 4: Get user information for response
+    let userData = null;
+    let authToken = null;
+    try {
+      const foundUser = await User.findById(userId).select('-password');
+      if (foundUser) {
+        userData = foundUser;
+        // Generate JWT token
+        const jwt = require('jsonwebtoken');
+        const JWT_SECRET = process.env.JWT_SECRET || 'mariposa-secret-key';
+        authToken = jwt.sign(
+          { 
+            userId: foundUser._id, 
+            email: foundUser.email,
+            userType: foundUser.userType 
+          },
+          JWT_SECRET,
+          { expiresIn: '24h' }
+        );
+      }
+    } catch (userError) {
+      console.error('❌ Error fetching user for response:', userError);
+    }
+    
     const endTime = Date.now();
     const duration = endTime - startTime;
 
@@ -410,6 +452,8 @@ const createAgentWithHedera = async (req, res) => {
       success: true,
       data: {
         agent: finalAgent,
+        user: userData,
+        token: authToken,
         hedera: {
           enabled: hederaResult.success || false,
           accountId: hederaResult.hedera?.accountId || null,

@@ -14,12 +14,12 @@ interface AuthPageProps {
 }
 
 export default function AuthPage({ onAuthSuccess, onNeedsOnboarding }: AuthPageProps) {
-  const [step, setStep] = useState<'email' | 'otp'>('email');
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
 
   const handleGetCode = async () => {
     if (!email || !email.includes('@')) {
@@ -44,7 +44,7 @@ export default function AuthPage({ onAuthSuccess, onNeedsOnboarding }: AuthPageP
 
       if (response.ok) {
         setSuccess('Verification code sent to your email!');
-        setStep('otp');
+        setOtpSent(true);
       } else {
         setError(data.message || 'Failed to send verification code');
       }
@@ -93,32 +93,18 @@ export default function AuthPage({ onAuthSuccess, onNeedsOnboarding }: AuthPageP
     }
   };
 
-  const handleBackToEmail = () => {
-    setStep('email');
-    setOtp('');
-    setError('');
-    setSuccess('');
-  };
+  // Removed handleBackToEmail - using single page flow
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-            {step === 'email' ? (
-              <Mail className="w-6 h-6 text-blue-600" />
-            ) : (
-              <Shield className="w-6 h-6 text-blue-600" />
-            )}
+            <Mail className="w-6 h-6 text-blue-600" />
           </div>
-          <CardTitle className="text-2xl font-bold">
-            {step === 'email' ? 'Welcome to Mariposa' : 'Verify Your Email'}
-          </CardTitle>
+          <CardTitle className="text-2xl font-bold">Welcome to Mariposa</CardTitle>
           <CardDescription>
-            {step === 'email' 
-              ? 'Enter your email to get started with secure crypto trading'
-              : `We sent a 6-digit code to ${email}`
-            }
+            Enter your email and verification code to get started with secure crypto trading
           </CardDescription>
         </CardHeader>
 
@@ -135,92 +121,85 @@ export default function AuthPage({ onAuthSuccess, onNeedsOnboarding }: AuthPageP
             </Alert>
           )}
 
-          {step === 'email' ? (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email Address</Label>
+          <div className="space-y-4">
+            {/* Email Field */}
+            <div className="space-y-2">
+              <Label htmlFor="email">Email Address</Label>
+              <div className="flex gap-2">
                 <Input
                   id="email"
                   type="email"
                   placeholder="your@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleGetCode()}
-                  disabled={loading}
+                  disabled={loading || otpSent}
+                  className="flex-1"
                 />
-              </div>
-
-              <Button 
-                onClick={handleGetCode} 
-                disabled={loading || !email}
-                className="w-full"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Sending Code...
-                  </>
-                ) : (
-                  <>
-                    Get Verification Code
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="otp">Verification Code</Label>
-                <Input
-                  id="otp"
-                  type="text"
-                  placeholder="000000"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  onKeyPress={(e) => e.key === 'Enter' && handleVerifyOtp()}
-                  disabled={loading}
-                  className="text-center text-lg tracking-widest"
-                  maxLength={6}
-                />
-              </div>
-
-              <Button 
-                onClick={handleVerifyOtp} 
-                disabled={loading || otp.length !== 6}
-                className="w-full"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Verifying...
-                  </>
-                ) : (
-                  'Verify & Continue'
-                )}
-              </Button>
-
-              <div className="text-center space-y-2">
-                <Button
-                  variant="ghost"
-                  onClick={handleBackToEmail}
-                  disabled={loading}
-                  className="text-sm"
-                >
-                  ← Back to email
-                </Button>
-                
-                <Button
-                  variant="ghost"
+                <Button 
                   onClick={handleGetCode}
-                  disabled={loading}
-                  className="text-sm text-blue-600"
+                  disabled={loading || !email || !email.includes('@') || otpSent}
+                  className="px-4"
                 >
-                  Resend code
+                  {loading && !otpSent ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : otpSent ? (
+                    'Sent'
+                  ) : (
+                    'Send OTP'
+                  )}
                 </Button>
               </div>
             </div>
-          )}
+
+            {/* OTP Field - Always visible for single-page experience */}
+            <div className="space-y-2">
+              <Label htmlFor="otp">6-Digit Verification Code</Label>
+              <Input
+                id="otp"
+                type="text"
+                placeholder="Enter OTP (use 123456 for demo)"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onKeyPress={(e) => e.key === 'Enter' && handleVerifyOtp()}
+                disabled={loading || !otpSent}
+                className="text-center text-lg tracking-widest"
+                maxLength={6}
+              />
+            </div>
+
+            {/* Verify Button */}
+            <Button 
+              onClick={handleVerifyOtp}
+              disabled={loading || otp.length !== 6 || !otpSent}
+              className="w-full"
+            >
+              {loading && otpSent ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Verifying...
+                </>
+              ) : (
+                'Verify & Continue'
+              )}
+            </Button>
+
+            {/* Reset Button */}
+            {otpSent && (
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setOtpSent(false);
+                  setOtp('');
+                  setSuccess('');
+                  setError('');
+                }}
+                disabled={loading}
+                className="w-full"
+              >
+                Change Email
+              </Button>
+            )}
+          </div>
 
           <div className="text-center text-sm text-gray-500 mt-6">
             <p>Secure authentication powered by email verification</p>

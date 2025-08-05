@@ -8,7 +8,8 @@ const {
   updateUser,
   deleteUser,
   registerUserWithWallet,
-  getUserWithWallet
+  getUserWithWallet,
+  getUserByEmail
 } = require('../controllers/userController');
 const router = express.Router();
 
@@ -533,5 +534,10 @@ router.post('/register-with-wallet', [
 // @route   GET /api/users/:id/wallet
 // @access  Public (should be protected in production)
 router.get('/:id/wallet', getUserWithWallet);
+
+// @desc    Get user by email
+// @route   GET /api/users/by-email/:email
+// @access  Public
+router.get('/by-email/:email', getUserByEmail);
 
 module.exports = router; 

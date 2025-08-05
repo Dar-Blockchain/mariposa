@@ -80,20 +80,8 @@ class HederaAgentKitService {
       throw new Error('Agent does not have Hedera credentials configured');
     }
 
-    // Decrypt private key if it's encrypted
-    let privateKey = agent.hederaPrivateKey;
-    try {
-      // Try to decrypt if it's encrypted
-      const crypto = require('crypto');
-      const encryptionKey = process.env.WALLET_ENCRYPTION_KEY || 'default-encryption-key';
-      const decipher = crypto.createDecipher('aes-256-cbc', encryptionKey);
-      let decrypted = decipher.update(privateKey, 'hex', 'utf8');
-      decrypted += decipher.final('utf8');
-      privateKey = decrypted;
-    } catch (decryptError) {
-      // If decryption fails, assume it's already in plain text
-      privateKey = agent.hederaPrivateKey;
-    }
+    // Decrypt private key using the helper method
+    const privateKey = await this.getDecryptedPrivateKey(agent);
 
     // Determine network from environment
     const network = process.env.HEDERA_NETWORK || 'testnet';
@@ -103,13 +91,24 @@ class HederaAgentKitService {
       agentClient = Client.forMainnet();
     } else {
       agentClient = Client.forTestnet();
+    }// Create client with agent's credentials
+    // Create the private key object (now properly decrypted)
+    let hederaPrivateKey;
+    try {
+      // Try DER format first (most common for Hedera)
+      hederaPrivateKey = PrivateKey.fromStringDer(privateKey);
+    } catch (error1) {
+      try {
+        // Then try standard format
+        hederaPrivateKey = PrivateKey.fromString(privateKey);
+      } catch (error2) {
+        // Finally try ECDSA format
+        hederaPrivateKey = PrivateKey.fromStringECDSA(privateKey);
+      }
     }
-
-    // Create client with agent's credentials
-    agentClient.setOperator(
-      agent.hederaAccountId,
-      PrivateKey.fromStringDer(privateKey)
-    );
+    
+    // Set operator with the successfully parsed private key
+    agentClient.setOperator(agent.hederaAccountId, hederaPrivateKey);
 
     // Set default fees for better performance
     try {
@@ -755,62 +754,85 @@ class HederaAgentKitService {
   }
 
   /**
-   * Transfer HBAR between accounts
-   * @param {Object} params - Transfer parameters
-   * @returns {Object} Transfer result
+   * Create evaluation topic for candidate assessment
+   * @param {Object} params - Evaluation topic parameters
+   * @returns {Object} Topic creation result
    */
-  async transferHbar({ fromAgentId, toAccountId, amount, memo }) {
+  async createEvaluationTopic({ company, postId, candidateName, candidateId, agentId }) {
     try {
-      if (!fromAgentId || !toAccountId || !amount) {
-        throw new Error("Agent ID, recipient account ID, and amount are required");
+      if (!company || !postId || !candidateName || !agentId) {
+        throw new Error("Company, postId, candidateName, and agentId are required");
       }
 
       // Get agent and create toolkit
-      const { agent, toolkit: agentToolkit } = await this.createAgentToolkit(fromAgentId);
+      const { agent, toolkit } = await this.createAgentToolkit(agentId);
+      console.log(agent);
       
-      // Get agent's client
-      const agentClient = agentToolkit.client;
-      
-      // Convert amount to Hbar
-      const transferAmount = new Hbar(amount);
-      
-      // Create transfer transaction
-      const transferTx = new TransferTransaction()
-        .addHbarTransfer(agent.hederaAccountId, transferAmount.negated())
-        .addHbarTransfer(AccountId.fromString(toAccountId), transferAmount);
-      
-      // Add memo if provided
-      if (memo) {
-        transferTx.setTransactionMemo(memo);
+      // Create HCS-11 compliant memo (keep it short for Hedera limits)
+      const topicMemo = `eval:${company}:${postId}:${candidateName}`;
+
+      // Get create topic tool
+      const tools = toolkit.getTools();
+      const createTopicTool = tools.find(tool => tool.name === 'create_topic_tool');
+
+      if (!createTopicTool) {
+        throw new Error("Create topic tool not found");
       }
+
+      // Create the topic with agent's public key
+      const publicKeyString = agent.hederaPublicKey;
+      console.log(publicKeyString);
+      if (!publicKeyString) {
+        throw new Error("Agent public key not found in database");
+      }
+
+      let agentPublicKey;
+      try {
+        agentPublicKey = PublicKey.fromString(publicKeyString);
+      } catch (error) {
+        throw new Error(`Invalid public key format in database: ${error.message}`);
+      }
+
+      const result = await createTopicTool._call({
+        topicMemo: topicMemo,
+        isSubmitKey: false,
+        submitKey: agentPublicKey,
+        adminKey: agentPublicKey
+      });
       
-      // Freeze and sign the transaction
-      const frozenTx = await transferTx.freezeWith(agentClient);
-      const signedTx = await frozenTx.sign(PrivateKey.fromStringDer(
-        await this.getDecryptedPrivateKey(agent)
-      ));
+      // Parse result as JSON
+      const parsedResult = typeof result === 'string' ? JSON.parse(result) : result;
+      let topicIdString = parsedResult.topicId.shard.low + "." + parsedResult.topicId.realm.low + "." + parsedResult.topicId.num.low;
       
-      // Execute the transaction
-      const txResponse = await signedTx.execute(agentClient);
-      const receipt = await txResponse.getReceipt(agentClient);
-      
-      console.log(`✅ HBAR transfer completed: ${amount} HBAR to ${toAccountId}`);
-      
+      // Save to database
+      const evaluationTopic = new EvaluationTopicModel({
+        topicId: topicIdString,
+        company,
+        postId,
+        candidateName,
+        candidateId,
+        topicMemo,
+        createdBy: agent.name,
+        evaluations: []
+      });
+
+      await evaluationTopic.save();
+
+      console.log(`✅ Evaluation topic created: ${topicIdString} for ${candidateName} at ${company}`);
+
       return {
         success: true,
-        transactionId: txResponse.transactionId.toString(),
-        status: receipt.status.toString(),
-        fromAccount: agent.hederaAccountId,
-        toAccount: toAccountId,
-        amount: amount,
-        currency: 'HBAR',
-        memo: memo || null,
+        topicId: topicIdString,
+        transactionId: parsedResult.transactionId,
+        topicMemo,
+        message: `Evaluation topic created for ${candidateName} at ${company}`,
+        createdBy: agent.name,
         timestamp: new Date().toISOString()
       };
 
     } catch (error) {
-      console.error('❌ HBAR transfer failed:', error);
-      throw new Error(`HBAR transfer failed: ${error.message}`);
+      console.error('❌ Evaluation topic creation failed:', error);
+      throw new Error(`Failed to create evaluation topic: ${error.message}`);
     }
   }
 
@@ -839,13 +861,27 @@ class HederaAgentKitService {
       // Add memo if provided
       if (memo) {
         transferTx.setTransactionMemo(memo);
+      }// Freeze and sign the transaction
+      const frozenTx = await transferTx.freezeWith(agentClient);
+      
+      // Get the private key (properly decrypted)
+      const privateKeyStr = await this.getDecryptedPrivateKey(agent);
+      let privateKey;
+      
+      try {
+        // Try DER format first (most common for Hedera)
+        privateKey = PrivateKey.fromStringDer(privateKeyStr);
+      } catch (error1) {
+        try {
+          // Then try standard format
+          privateKey = PrivateKey.fromString(privateKeyStr);
+        } catch (error2) {
+          // Finally try ECDSA format
+          privateKey = PrivateKey.fromStringECDSA(privateKeyStr);
+        }
       }
       
-      // Freeze and sign the transaction
-      const frozenTx = await transferTx.freezeWith(agentClient);
-      const signedTx = await frozenTx.sign(PrivateKey.fromStringDer(
-        await this.getDecryptedPrivateKey(agent)
-      ));
+      const signedTx = await frozenTx.sign(privateKey);
       
       // Execute the transaction
       const txResponse = await signedTx.execute(agentClient);
@@ -992,18 +1028,41 @@ class HederaAgentKitService {
    */
   async getDecryptedPrivateKey(agent) {
     let privateKey = agent.hederaPrivateKey;
-    try {
-      // Try to decrypt if it's encrypted
-      const crypto = require('crypto');
-      const encryptionKey = process.env.WALLET_ENCRYPTION_KEY || 'default-encryption-key';
-      const decipher = crypto.createDecipher('aes-256-cbc', encryptionKey);
-      let decrypted = decipher.update(privateKey, 'hex', 'utf8');
-      decrypted += decipher.final('utf8');
-      return decrypted;
-    } catch (decryptError) {
-      // If decryption fails, assume it's already in plain text
-      return agent.hederaPrivateKey;
+    
+    // If the private key contains ':', it's in the iv:encrypted format
+    if (privateKey && privateKey.includes(':')) {
+      try {
+        const crypto = require('crypto');
+        const encryptionKey = process.env.WALLET_ENCRYPTION_KEY || 'default-encryption-key';
+        
+        // Create a 32-byte key from the password using SHA-256
+        const keyBuffer = crypto.createHash('sha256').update(encryptionKey).digest();
+        
+        // Split the encrypted data
+        const parts = privateKey.split(':');
+        if (parts.length !== 2) {
+          throw new Error('Invalid encrypted private key format. Expected format: iv:encrypted');
+        }
+        
+        const iv = Buffer.from(parts[0], 'hex');
+        const encrypted = parts[1];
+        
+        // Create decipher using the correct modern API
+        const decipher = crypto.createDecipheriv('aes-256-cbc', keyBuffer, iv);
+        
+        let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        
+        console.log('✅ Decrypted private key successfully');
+        return decrypted;
+      } catch (decryptError) {
+        console.error('❌ Failed to decrypt private key:', decryptError);
+        throw new Error(`Private key decryption failed: ${decryptError.message}`);
+      }
     }
+    
+    // If no ':', assume it's already in plain text
+    return privateKey;
   }
 
   /**
@@ -1019,6 +1078,5 @@ class HederaAgentKitService {
   }
 }
 
-// Export singleton instance
 const hederaAgentKitService = new HederaAgentKitService();
 module.exports = hederaAgentKitService;

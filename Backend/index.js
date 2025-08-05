@@ -10,15 +10,14 @@ const swaggerSpecs = require('./config/swagger');
 dotenv.config();
 
 // Import database connection
-const connectDB = require('./config/database');
-
-// Import routes
+const connectDB = require('./config/database');// Import routes
 const userRoutes = require('./routes/userRoutes');
 const productRoutes = require('./routes/productRoutes');
 const aiAgentRoutes = require('./routes/aiAgentRoutes');
 const agentRoutes = require('./routes/agentRoutes');
 const walletRoutes = require('./routes/walletRoutes');
 const agentChatRoutes = require('./routes/agentChatRoutes');
+const simpleHederaAgentRoutes = require('./routes/simpleHederaAgents');
 
 // Initialize Express app
 const app = express();
@@ -41,13 +40,12 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     version: '1.0.0'
   });
-});
-
-// API routes
+});// API routes
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/agent', aiAgentRoutes);
 app.use('/api/agents', agentRoutes);
+app.use('/api/agents/hedera', simpleHederaAgentRoutes);
 app.use('/api/wallets', walletRoutes);
 app.use('/api/agent-chat', agentChatRoutes);
 

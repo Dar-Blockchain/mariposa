@@ -29,6 +29,12 @@ import {
 
 export default function MainDashboard() {
   const { user, logout } = useAuth();
+  
+  // Get wallet info from user data
+  const wallet = user?.wallet || {};
+  const hbarBalance = wallet?.balance?.native || 30; // Default to 30 HBAR
+  const hbarPrice = 0.065; // Approximate HBAR price in USD
+  const portfolioValueUSD = hbarBalance * hbarPrice;
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -39,7 +45,7 @@ export default function MainDashboard() {
           <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center mr-3">
             <Wallet className="w-6 h-6" />
           </div>
-          <h1 className="text-xl font-bold">CryptoVault</h1>
+          <h1 className="text-xl font-bold">Mariposa</h1>
         </div>
 
         {/* Navigation */}
@@ -137,10 +143,13 @@ export default function MainDashboard() {
                     <Eye className="w-5 h-5 text-white/70" />
                   </div>
                   <div className="space-y-2">
-                    <p className="text-4xl font-bold">$56,752.89</p>
+                    <div className="flex items-baseline space-x-3">
+                      <p className="text-4xl font-bold">${portfolioValueUSD.toFixed(2)}</p>
+                      <span className="text-lg text-white/80">{hbarBalance} HBAR</span>
+                    </div>
                     <div className="flex items-center text-green-300">
                       <ArrowUpRight className="w-4 h-4 mr-1" />
-                      <span className="text-sm">+8.5% ($4,234.12) Last 24h</span>
+                      <span className="text-sm">Hedera Network • Active</span>
                     </div>
                   </div>
                 </CardContent>
@@ -178,31 +187,54 @@ export default function MainDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {/* Bitcoin Holding */}
+                    {/* HBAR Holding */}
                     <div className="flex items-center justify-between py-4 border-b">
                       <div className="flex items-center">
-                        <div className="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center mr-4">
-                          <span className="text-white font-bold text-sm">BTC</span>
+                        <div className="w-12 h-12 bg-purple-600 rounded-full flex items-center justify-center mr-4">
+                          <span className="text-white font-bold text-sm">H</span>
                         </div>
                         <div>
-                          <h4 className="font-semibold text-gray-900">Bitcoin</h4>
-                          <p className="text-gray-500 text-sm">BTC</p>
+                          <h4 className="font-semibold text-gray-900">Hedera</h4>
+                          <p className="text-gray-500 text-sm">HBAR</p>
                         </div>
                       </div>
                       <div className="text-right">
                         <div className="flex items-center space-x-4">
                           <div>
-                            <p className="font-semibold">0.5432</p>
-                            <p className="text-sm text-green-600">+5.2%</p>
+                            <p className="font-semibold">{hbarBalance}</p>
+                            <p className="text-sm text-green-600">Active</p>
                           </div>
-                          <p className="font-semibold text-gray-900">$27,564.32</p>
+                          <p className="font-semibold text-gray-900">${portfolioValueUSD.toFixed(2)}</p>
                         </div>
                       </div>
                     </div>
                     
-                    {/* Add more holdings here if needed */}
-                    <div className="text-center py-8 text-gray-500">
-                      <p>More holdings will appear here as you add them to your portfolio.</p>
+                    {/* Wallet Information */}
+                    {(wallet?.accountId || wallet?.address) && (
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <h5 className="font-medium text-gray-900 mb-2">Hedera Wallet</h5>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Account ID:</span>
+                            <span className="font-mono text-gray-900">{wallet.accountId || wallet.address}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Network:</span>
+                            <span className="text-gray-900">{wallet.network || 'testnet'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Status:</span>
+                            <Badge variant="secondary" className="bg-green-100 text-green-800">
+                              {wallet.isActive ? 'Active' : 'Inactive'}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* No additional holdings message */}
+                    <div className="text-center py-4 text-gray-500">
+                      <p>Additional tokens will appear here as you add them to your portfolio.</p>
                     </div>
                   </div>
                 </CardContent>
