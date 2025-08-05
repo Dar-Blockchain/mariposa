@@ -17,6 +17,8 @@ const userRoutes = require('./routes/userRoutes');
 const productRoutes = require('./routes/productRoutes');
 const aiAgentRoutes = require('./routes/aiAgentRoutes');
 const agentRoutes = require('./routes/agentRoutes');
+const walletRoutes = require('./routes/walletRoutes');
+const agentChatRoutes = require('./routes/agentChatRoutes');
 
 // Initialize Express app
 const app = express();
@@ -46,6 +48,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/agent', aiAgentRoutes);
 app.use('/api/agents', agentRoutes);
+app.use('/api/wallets', walletRoutes);
+app.use('/api/agent-chat', agentChatRoutes);
 
 // Swagger documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
@@ -70,7 +74,8 @@ app.get('/', (req, res) => {
       users: '/api/users',
       products: '/api/products',
       aiAgent: '/api/agent',
-      agents: '/api/agents'
+      agents: '/api/agents',
+      agentChat: '/api/agent-chat'
     },
     version: '1.0.0',
     timestamp: new Date().toISOString()
@@ -93,14 +98,15 @@ app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
     message: `Route ${req.originalUrl} not found`,
-    availableRoutes: {
-      documentation: '/api-docs',
-      health: '/health',
-      users: '/api/users',
-      products: '/api/products',
-      aiAgent: '/api/agent',
-      agents: '/api/agents'
-    }
+          availableRoutes: {
+        documentation: '/api-docs',
+        health: '/health',
+        users: '/api/users',
+        products: '/api/products',
+        aiAgent: '/api/agent',
+        agents: '/api/agents',
+        agentChat: '/api/agent-chat'
+      }
   });
 });
 
@@ -111,6 +117,7 @@ app.listen(PORT, () => {
   console.log(`📚 Documentation available at http://localhost:${PORT}/api-docs`);
   console.log(`🤖 Multi-Agent System available at /api/agents`);
   console.log(`💬 AI Agent Chat available at /api/agent`);
+  console.log(`🧠 Intelligent Agent Chat available at /api/agent-chat`);
   console.log(`❤️  Health check available at http://localhost:${PORT}/health`);
 });
 

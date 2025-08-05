@@ -1,6 +1,8 @@
 const { validationResult } = require('express-validator');
 const User = require('../models/User');
+const Wallet = require('../models/Wallet');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 
 // Helper function to generate JWT token
 const generateToken = (id) => {
@@ -215,11 +217,239 @@ const deleteUser = async (req, res) => {
   }
 };
 
+// @desc    Register user with wallet
+// @route   POST /api/users/register-with-wallet
+// @access  Public
+const registerUserWithWallet = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        errors: errors.array()
+      });
+    }
+
+    const { 
+      name, 
+      email, 
+      walletAddress, 
+      privateKey, 
+      userType = 'human',
+      password = null,
+      preferences = {} 
+    } = req.body;
+
+    console.log('\n👤 REGISTERING USER WITH WALLET');
+    console.log('═'.repeat(60));
+    console.log('📧 Email:', email);
+    console.log('👤 Name:', name);
+    console.log('🔗 User Type:', userType);
+    console.log('📱 Wallet Address:', walletAddress);
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'User with this email already exists'
+      });
+    }
+
+    // Check if wallet address already exists
+    const existingWallet = await Wallet.findOne({ walletAddress });
+    if (existingWallet) {
+      return res.status(400).json({
+        success: false,
+        message: 'Wallet address is already registered'
+      });
+    }
+
+    // Validate wallet address format (basic SEI address validation)
+    if (!walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid wallet address format'
+      });
+    }
+
+    // Validate private key format (basic validation)
+    if (!privateKey || privateKey.length < 32) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid private key format'
+      });
+    }
+
+    console.log('✅ VALIDATION PASSED');
+
+    // Create user first
+    const userData = {
+      name,
+      email,
+      userType,
+      walletAddress,
+      preferences: preferences && Object.keys(preferences).length > 0 ? {
+        defaultStrategy: preferences.defaultStrategy || 'DCA',
+        riskTolerance: preferences.riskTolerance || 'moderate',
+        preferredTokens: preferences.preferredTokens || ['WETH', 'WBTC', 'SEI', 'USDC'],
+        notifications: {
+          email: preferences.notifications?.email !== false,
+          portfolio: preferences.notifications?.portfolio !== false,
+          trades: preferences.notifications?.trades || false
+        }
+      } : {
+        defaultStrategy: 'DCA',
+        riskTolerance: 'moderate',
+        preferredTokens: ['WETH', 'WBTC', 'SEI', 'USDC'],
+        notifications: {
+          email: true,
+          portfolio: true,
+          trades: false
+        }
+      }
+    };
+
+    // Password is optional for all users
+    if (password && password.length >= 6) {
+      userData.password = password;
+    }
+
+    const user = new User(userData);
+    const savedUser = await user.save();
+
+    console.log('✅ USER CREATED');
+    console.log('🆔 User ID:', savedUser._id);
+
+    // Create wallet for the user
+    const walletData = {
+      address: walletAddress,
+      privateKey: privateKey
+    };
+
+    const wallet = Wallet.createForUser(
+      savedUser._id,
+      savedUser.name,
+      walletData,
+      0 // Initial balance
+    );
+
+    const savedWallet = await wallet.save();
+
+    console.log('✅ WALLET CREATED AND ENCRYPTED');
+    console.log('🆔 Wallet ID:', savedWallet._id);
+    console.log('📱 Wallet Address:', savedWallet.walletAddress);
+
+    // Update user with wallet information
+    savedUser.walletId = savedWallet._id;
+    savedUser.walletAddress = savedWallet.walletAddress;
+    await savedUser.save();
+
+    console.log('✅ USER-WALLET LINK ESTABLISHED');
+
+    // Generate token for human users
+    let token = null;
+    if (userType === 'human') {
+      token = generateToken(savedUser._id);
+    }
+
+    console.log('🎉 USER REGISTRATION WITH WALLET COMPLETED');
+    console.log('═'.repeat(60));
+
+    const responseData = {
+      user: {
+        id: savedUser._id,
+        name: savedUser.name,
+        email: savedUser.email,
+        userType: savedUser.userType,
+        walletAddress: savedUser.walletAddress,
+        walletId: savedUser.walletId,
+        createdAt: savedUser.createdAt
+      },
+      wallet: {
+        id: savedWallet._id,
+        address: savedWallet.walletAddress,
+        network: savedWallet.network,
+        walletClass: savedWallet.walletClass,
+        balance: savedWallet.balance,
+        portfolioValue: savedWallet.portfolioValue,
+        isActive: savedWallet.isActive
+      }
+    };
+
+    if (token) {
+      responseData.token = token;
+    }
+
+    res.status(201).json({
+      success: true,
+      data: responseData,
+      message: `${userType === 'human' ? 'User' : 'Agent'} registered successfully with encrypted wallet`
+    });
+
+  } catch (error) {
+    console.error('❌ USER-WALLET REGISTRATION ERROR:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to register user with wallet',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get user with wallet information
+// @route   GET /api/users/:id/wallet
+// @access  Public (should be protected in production)
+const getUserWithWallet = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    console.log('\n📊 FETCHING USER WITH WALLET INFO');
+    console.log('🆔 User ID:', id);
+
+    const user = await User.findById(id)
+      .populate('walletId')
+      .populate('agentId')
+      .select('-password');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    console.log('✅ USER FOUND');
+    console.log('👤 Name:', user.name);
+    console.log('🔗 User Type:', user.userType);
+    console.log('📱 Wallet:', user.walletAddress ? 'Connected' : 'Not connected');
+
+    res.json({
+      success: true,
+      data: {
+        user: user,
+        hasWallet: !!user.walletId,
+        walletConnected: !!user.walletAddress
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ GET USER WITH WALLET ERROR:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve user with wallet information',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
   getUsers,
   getUserById,
   updateUser,
-  deleteUser
+  deleteUser,
+  registerUserWithWallet,
+  getUserWithWallet
 }; 

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useRouter } from 'next/navigation';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -14,9 +15,7 @@ import {
   Bot
 } from 'lucide-react';
 
-interface WalletDashboardProps {
-  onCreateAgent: () => void;
-}
+
 
 const cryptoData = [
   { symbol: 'BTC', name: 'Bitcoin', balance: '0.5432', value: '$27,564.32', change: '+5.2%', positive: true },
@@ -32,8 +31,9 @@ const transactions = [
   { id: 4, type: 'sell', asset: 'ADA', amount: '234.56', value: '$89.12', time: '1 day ago' },
 ];
 
-export default function WalletDashboard({ onCreateAgent }: WalletDashboardProps) {
+export default function WalletDashboard() {
   const [hideBalances, setHideBalances] = useState(false);
+  const router = useRouter();
   const totalBalance = '$56,752.89';
 
   return (
@@ -45,11 +45,11 @@ export default function WalletDashboard({ onCreateAgent }: WalletDashboardProps)
           <p className="text-sm sm:text-base text-gray-600">Track your crypto investments and manage your portfolio</p>
         </div>
         <Button
-          onClick={onCreateAgent}
-          className="bg-gradient-to-r from-purple-500 to-blue-500 hover:opacity-90 text-white font-semibold px-4 sm:px-6 py-2 sm:py-3 rounded-xl shadow-lg transition-all duration-200 hover:scale-105 w-full sm:w-auto"
+          onClick={() => router.push('/agent/master')}
+          className="bg-gradient-to-r from-green-500 to-emerald-500 hover:opacity-90 text-white font-semibold px-4 sm:px-6 py-2 sm:py-3 rounded-xl shadow-lg transition-all duration-200 hover:scale-105 w-full sm:w-auto"
         >
-          <Bot className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-          Create Agent
+          <Plus className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+          Create New Agent
         </Button>
       </div>
 

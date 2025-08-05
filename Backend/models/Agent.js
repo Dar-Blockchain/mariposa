@@ -7,6 +7,12 @@ const agentSchema = new mongoose.Schema({
     trim: true,
     maxlength: 100
   },
+  agentUuid: {
+    type: String,
+    required: true,
+    unique: true,
+    index: true
+  },
   description: {
     type: String,
     maxlength: 500,
@@ -17,11 +23,67 @@ const agentSchema = new mongoose.Schema({
     required: true,
     index: true
   },
+  avatarName: {
+    type: String,
+    maxlength: 100,
+    default: ''
+  },
+  role: {
+    type: String,
+    maxlength: 100,
+    default: 'Trading Agent'
+  },
+  hederaAccountId: {
+    type: String,
+    index: true,
+    sparse: true
+  },
+  hederaPrivateKey: {
+    type: String,
+    select: false // Don't return this field by default for security
+  },
+  hederaPublicKey: {
+    type: String
+  },
+  hederaAccountCreationTx: {
+    type: String,
+    // Transaction ID from account creation
+  },
+  agentType: {
+    type: String,
+    enum: ['strategy', 'actions', 'information', 'feedback', 'general'],
+    default: 'general',
+    index: true
+  },
   primaryStrategy: {
     type: String,
-    required: true,
-    enum: ['DCA', 'momentum_trading', 'swing_trading', 'hodl', 'arbitrage', 'custom'],
-    default: 'DCA'
+    required: false, // Only required for strategy agents
+    default: null,
+    validate: [
+      {
+        validator: function(value) {
+          // If value is null or undefined, it's always valid (for non-strategy agents)
+          if (value == null) {
+            return true;
+          }
+          // If value is provided, it must be a valid enum value
+          const validStrategies = ['DCA', 'momentum_trading', 'swing_trading', 'hodl', 'arbitrage', 'scalping', 'memecoin', 'yield_farming', 'spot_trading', 'futures_trading', 'custom'];
+          return validStrategies.includes(value);
+        },
+        message: 'Invalid primary strategy. Must be one of: DCA, momentum_trading, swing_trading, hodl, arbitrage, scalping, memecoin, yield_farming, spot_trading, futures_trading, custom'
+      },
+      {
+        validator: function(value) {
+          // If agentType is 'strategy', primaryStrategy is required
+          if (this.agentType === 'strategy') {
+            return value != null && value !== '';
+          }
+          // For non-strategy agents, primaryStrategy can be null/undefined
+          return true;
+        },
+        message: 'Primary strategy is required for strategy agents'
+      }
+    ]
   },
   configuration: {
     // DCA specific settings
@@ -40,8 +102,7 @@ const agentSchema = new mongoose.Schema({
       default: 'moderate'
     },
     preferredTokens: [{
-      type: String,
-      enum: ['BTC', 'ETH', 'SEI', 'USDC', 'USDT', 'DAI']
+      type: String
     }],
     // Trading specific settings
     maxPositionSize: {
@@ -67,6 +128,14 @@ const agentSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  isApproved: {
+    type: Boolean,
+    default: false
+  },
+  canBeginWork: {
+    type: Boolean,
+    default: false
+  },
   totalInteractions: {
     type: Number,
     default: 0
@@ -74,6 +143,20 @@ const agentSchema = new mongoose.Schema({
   totalBudgetManaged: {
     type: Number,
     default: 0
+  },
+  walletId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Wallet',
+    index: true
+  },
+  walletAddress: {
+    type: String,
+    index: true
+  },
+  currentStrategyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Strategy',
+    index: true
   },
   lastInteraction: {
     type: Date,

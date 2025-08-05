@@ -1,6 +1,6 @@
-# Mareposa Backend
+# Mariposa Backend - Hedera Edition
 
-A Node.js Express API with MongoDB using Mongoose for data modeling.
+A Node.js Express API with MongoDB using Mongoose for data modeling, integrated with Hedera Hashgraph network for fast, secure, and low-cost cryptocurrency operations.
 
 ## 🧠 AI Agent with Memory System
 
@@ -18,7 +18,7 @@ The AI agent now includes a sophisticated **memory system** that maintains conve
 - **Strategy Generation**: `POST /api/agent/strategy` - Enhanced with memory context
 - **Memory History**: `GET /api/agent/memory?limit=5` - Retrieve conversation history
 - **Chat**: `POST /api/agent/chat` - General conversation with AI agent
-- **Prices**: `GET /api/agent/prices` - SEI network token prices
+- **Prices**: `GET /api/agent/prices` - Hedera network token prices
 
 ### Memory-Enhanced Strategy Example
 
@@ -134,6 +134,14 @@ Backend/
 
 ## 🤖 AI Agent Features
 
+### Intelligent Agent Creation (NEW!)
+- **AI-Powered Parameter Extraction**: Uses Together AI's Kimi-K2-Instruct model to analyze user messages and automatically extract trading parameters
+- **Natural Language Processing**: Create agents by simply describing your investment goals in plain English
+- **Automatic Strategy Selection**: AI determines the best strategy type (DCA, momentum trading, swing trading, etc.) based on user intent
+- **Smart Budget Recommendations**: AI suggests appropriate budgets and allocations when not specified
+- **Risk Assessment**: Automatic risk tolerance detection from user language
+- **Action Plan Generation**: Creates specific trading actions with priorities and reasoning
+
 ### Buy/Sell Strategy Generation
 - **Dollar-based recommendations** with specific amounts
 - **Buy/sell actions** with unique REF IDs for bot execution
@@ -154,11 +162,23 @@ Backend/
 
 ## 🔧 API Endpoints
 
+### Intelligent Agent Creation (NEW!)
+- `POST /api/agents/strategy` - **Create intelligent agent from natural language message**
+
 ### AI Agent (with Memory)
 - `POST /api/agent/strategy` - Generate buy/sell strategy with memory context
 - `GET /api/agent/memory` - Retrieve conversation history
 - `POST /api/agent/chat` - Chat with AI agent
 - `GET /api/agent/prices` - Get SEI network token prices
+
+### Agent Management
+- `POST /api/agents` - Create agent manually with parameters
+- `GET /api/agents/user/:userId` - Get all agents for a user
+- `GET /api/agents/:id` - Get agent by ID
+- `PUT /api/agents/:id` - Update agent
+- `DELETE /api/agents/:id` - Delete agent (soft delete)
+- `GET /api/agents/:id/memory` - Get agent memory history
+- `GET /api/agents/strategies` - Get available agent strategies
 
 ### User Management
 - `POST /api/users/register` - Register new user
@@ -215,66 +235,6 @@ The AI agent specializes in **SEI network DEX trading**:
 - Category management
 - Featured products
 - Inventory tracking
-
-## 🔍 Example Usage
-
-### Memory-Enhanced Strategy Request
-```bash
-curl -X POST http://localhost:5000/api/agent/strategy \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "I want to invest $1000 in BTC and ETH for long-term holding. Conservative approach and can add $200 monthly."
-  }'
-```
-
-### Follow-up Request (with Memory Context)
-```bash
-curl -X POST http://localhost:5000/api/agent/strategy \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "I want to add more to my BTC position. Market seems to be dipping."
-  }'
-```
-
-### Check Memory History
-```bash
-curl "http://localhost:5000/api/agent/memory?limit=5"
-```
-
-## 🧪 Testing
-
-### Memory System Test
-```bash
-node test-memory.js
-```
-
-### API Testing
-Use the interactive Swagger documentation at `/api-docs` to test all endpoints.
-
-## 📚 Documentation
-
-- **Swagger UI**: `/api-docs` - Interactive API documentation
-- **Usage Examples**: `examples/ai-agent-usage.md` - Detailed usage examples
-- **Memory Examples**: Shows conversation flow and continuity
-
-## 🚀 Production Deployment
-
-1. **Environment Setup**
-   - Set production environment variables
-   - Configure MongoDB connection
-   - Set up Together AI API key
-
-2. **Security Considerations**
-   - Implement rate limiting
-   - Set up proper CORS origins
-   - Configure session management
-   - Set up monitoring and logging
-
-3. **Performance Optimization**
-   - Database indexing for memory queries
-   - Caching for frequently accessed data
-   - Connection pooling for database
-   - CDN for static assets
 
 ## 🤝 Contributing
 

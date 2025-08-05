@@ -2,394 +2,18 @@ const express = require('express');
 const { body } = require('express-validator');
 const {
   chatWithAgent,
-  getCryptoPrices,
-  generateDCAStrategy
+  getCryptoPrices
 } = require('../controllers/aiAgentController');
-const Memory = require('../models/Memory');
+const promptRouterController = require('../controllers/promptRouterController');
 const router = express.Router();
 
 /**
  * @swagger
  * components:
- *   schemas:
- *     AIAgentRequest:
- *       type: object
- *       required:
- *         - message
- *       properties:
- *         message:
- *           type: string
- *           description: User's message to the AI agent
- *           example: "I want to start trading on SEI network with moderate risk tolerance"
- *         context:
- *           type: object
- *           properties:
- *             portfolio:
- *               type: object
- *               description: User's current portfolio
- *               example: {"BTC": 0.5, "ETH": 2.0}
- *             budget:
- *               type: number
- *               description: User's monthly budget
- *               example: 500
- *             riskTolerance:
- *               type: string
- *               enum: [conservative, moderate, aggressive]
- *               description: User's risk tolerance
- *               example: "moderate"
- *             timeline:
- *               type: string
- *               description: Investment timeline
- *               example: "12 months"
- *     DCAStrategyRequest:
- *       type: object
- *       required:
- *         - message
- *       properties:
- *         message:
- *           type: string
- *           description: User's message describing their investment intent, holding preferences, and budget
- *           example: "I want to invest $1000 in BTC and ETH for long-term holding. I prefer conservative approach and can add $200 monthly."
- *     ExtractedParameters:
- *       type: object
- *       properties:
- *         intent:
- *           type: string
- *           description: Extracted investment intent
- *           example: "long_holding"
- *           enum: [long_holding, short_trading, mixed]
- *         mentionedCoins:
- *           type: array
- *           items:
- *             type: string
- *           description: Coins mentioned in the message
- *           example: ["BTC", "ETH", "SEI"]
- *         riskIndicators:
- *           type: string
- *           description: Risk tolerance indicators from message
- *           example: "conservative"
- *           enum: [conservative, moderate, aggressive]
- *         budgetHints:
- *           type: string
- *           description: Budget information found in message
- *           example: "$1000 initial, $200 monthly"
- *         timeline:
- *           type: string
- *           description: Timeline extracted from message
- *           example: "long-term (months/years)"
- *         holdingStrategy:
- *           type: string
- *           description: Extracted holding strategy
- *           example: "accumulation"
- *           enum: [accumulation, profit_taking, rebalancing]
- *     BudgetRecommendation:
- *       type: object
- *       properties:
- *         minimumBudget:
- *           type: string
- *           description: Minimum budget needed for strategy success
- *           example: "$200 minimum needed for diversified strategy"
- *         recommendedBudget:
- *           type: string
- *           description: Optimal budget for strategy
- *           example: "$500 optimal amount for portfolio building"
- *         frequency:
- *           type: string
- *           description: Recommended investment frequency
- *           example: "monthly"
- *         dollarAllocation:
- *           type: object
- *           description: Specific dollar amounts for each token
- *           properties:
- *             BTC:
- *               type: string
- *               example: "$200 for Bitcoin accumulation"
- *             ETH:
- *               type: string
- *               example: "$150 for Ethereum position"
- *             SEI:
- *               type: string
- *               example: "$100 for native SEI tokens"
- *             stablecoins:
- *               type: string
- *               example: "$50 for stability and opportunities"
- *         reasoning:
- *           type: string
- *           description: Explanation of budget calculations
- *           example: "Minimum viable amounts for DEX trading considering gas costs and diversification"
- *     MemoryContext:
- *       type: object
- *       properties:
- *         timestamp:
- *           type: string
- *           format: date-time
- *           example: "2024-01-15T10:30:00.000Z"
- *         userIntent:
- *           type: string
- *           example: "I want to invest $1000 in BTC and ETH for long-term holding"
- *         strategyType:
- *           type: string
- *           enum: [long_holding, short_trading, mixed]
- *           example: "long_holding"
- *         budget:
- *           type: number
- *           example: 1000
- *         actions:
- *           type: string
- *           example: "BUY $600 USDC/BTC (long-term), BUY $300 USDC/ETH (long-term)"
- *         summary:
- *           type: string
- *           example: "Created conservative long-term strategy with BTC and ETH focus"
- *         outcome:
- *           type: string
- *           enum: [pending, executed, cancelled]
- *           example: "pending"
- *     AIAgentResponse:
- *       type: object
- *       properties:
- *         success:
- *           type: boolean
- *           example: true
- *         data:
- *           type: object
- *           properties:
- *             response:
- *               $ref: '#/components/schemas/AIResponse'
- *             metadata:
- *               type: object
- *               properties:
- *                 model:
- *                   type: string
- *                   example: "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
- *                 timestamp:
- *                   type: string
- *                   format: date-time
- *                   example: "2024-01-15T10:30:00.000Z"
- *                 tokensUsed:
- *                   type: number
- *                   example: 1500
- *     CryptoPricesResponse:
- *       type: object
- *       properties:
- *         success:
- *           type: boolean
- *           example: true
- *         data:
- *           type: object
- *           properties:
- *             prices:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   symbol:
- *                     type: string
- *                     example: "BTC"
- *                   name:
- *                     type: string
- *                     example: "Bitcoin"
- *                   price:
- *                     type: number
- *                     example: 42000.50
- *                   change24h:
- *                     type: number
- *                     example: 2.5
- *                   volume24h:
- *                     type: number
- *                     example: 1500000000
- *                   marketCap:
- *                     type: number
- *                     example: 800000000000
- *                   network:
- *                     type: string
- *                     example: "sei"
- *                   type:
- *                     type: string
- *                     example: "wrapped"
- *     AIResponse:
- *       type: object
- *       properties:
- *         analysis:
- *           type: string
- *           description: Detailed analysis of user's message and investment intent
- *           example: "The user is interested in long-term holding with conservative approach..."
- *         extractedParameters:
- *           $ref: '#/components/schemas/ExtractedParameters'
- *         strategy:
- *           type: string
- *           description: Comprehensive buy/sell strategy tailored to user's message
- *           example: "A conservative long-term holding strategy focusing on BTC and ETH accumulation..."
- *         budgetRecommendation:
- *           $ref: '#/components/schemas/BudgetRecommendation'
- *         actionPlan:
- *           type: array
- *           items:
- *             type: object
- *             properties:
- *               step:
- *                 type: number
- *                 example: 1
- *               action:
- *                 type: string
- *                 example: "BUY $200 worth of BTC on SEI DEX for long-term holding"
- *               actionType:
- *                 type: string
- *                 enum: [BUY, SELL]
- *                 example: "BUY"
- *               dollarAmount:
- *                 type: string
- *                 example: "$200.00"
- *               priority:
- *                 type: string
- *                 enum: [high, medium, low]
- *                 example: "high"
- *               timeframe:
- *                 type: string
- *                 enum: [immediate, short-term, long-term]
- *                 example: "immediate"
- *               ref:
- *                 type: string
- *                 example: "BUY_BTC_1234567890"
- *               tokenPair:
- *                 type: string
- *                 example: "USDC/BTC"
- *               network:
- *                 type: string
- *                 example: "sei"
- *               holdingPeriod:
- *                 type: string
- *                 enum: [short-term, long-term]
- *                 example: "long-term"
- *               reasoning:
- *                 type: string
- *                 example: "Bitcoin as core holding for portfolio foundation"
- *         userMessage:
- *           type: string
- *           description: Clear message to send back to the user explaining the strategy
- *           example: "Based on your message, I've created a long-term holding strategy focusing on gradual accumulation..."
- *         riskAssessment:
- *           type: string
- *           description: Risk analysis for the buy/sell strategy based on holding period
- *           example: "Conservative risk long-term holding strategy suitable for gradual wealth building..."
- *         recommendations:
- *           type: array
- *           items:
- *             type: string
- *           example: ["Start with $500 initial investment spread across BTC and ETH", "Use SEI network DEX for lower transaction costs"]
- *         marketInsights:
- *           type: string
- *           description: Current SEI network market insights relevant to buy/sell decisions
- *           example: "SEI network offers low-cost DEX trading opportunities with growing ecosystem..."
- *         nextSteps:
- *           type: string
- *           description: What the user should do next with specific dollar amounts and actions
- *           example: "Execute the buy orders starting with BTC ($200), then ETH ($150)..."
- *     DCAStrategyResponse:
- *       type: object
- *       properties:
- *         success:
- *           type: boolean
- *           example: true
- *         data:
- *           type: object
- *           properties:
- *             strategy:
- *               $ref: '#/components/schemas/AIResponse'
- *             originalMessage:
- *               type: string
- *               description: The original user message
- *               example: "I want to invest $1000 in BTC and ETH..."
- *             sessionId:
- *               type: string
- *               description: Session identifier for memory tracking
- *               example: "127.0.0.1_Mozilla_5.0_Chrome_120.0"
- *             memoryContext:
- *               type: string
- *               description: Indicates if previous interactions were considered
- *               example: "Previous interactions considered"
- *             timestamp:
- *               type: string
- *               format: date-time
- *               example: "2024-01-15T10:30:00.000Z"
- *     MemoryHistoryResponse:
- *       type: object
- *       properties:
- *         success:
- *           type: boolean
- *           example: true
- *         data:
- *           type: object
- *           properties:
- *             sessionId:
- *               type: string
- *               example: "127.0.0.1_Mozilla_5.0_Chrome_120.0"
- *             memories:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/MemoryContext'
- *             count:
- *               type: number
- *               example: 3
- *             timestamp:
- *               type: string
- *               format: date-time
- *               example: "2024-01-15T10:30:00.000Z"
  *   tags:
  *     - name: AI Agent
- *       description: AI-powered crypto DCA expert agent endpoints
+ *       description: AI-powered crypto agent endpoints
  */
-
-/**
- * @swagger
- * /api/agent/memory:
- *   get:
- *     summary: Get conversation memory history (deprecated)
- *     tags: [AI Agent]
- *     deprecated: true
- *     description: This endpoint is deprecated. Use /api/agents/{id}/memory instead for agent-specific memory retrieval.
- *     parameters:
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 10
- *           minimum: 1
- *           maximum: 50
- *         description: Maximum number of memories to return
- *         example: 5
- *     responses:
- *       200:
- *         description: Memory history retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   properties:
- *                     message:
- *                       type: string
- *                       example: "This endpoint is deprecated. Use /api/agents/{id}/memory for agent-specific memory."
- *                     timestamp:
- *                       type: string
- *                       format: date-time
- *       500:
- *         description: Server error
- */
-router.get('/memory', async (req, res) => {
-  res.json({
-    success: true,
-    data: {
-      message: "This endpoint is deprecated. Use /api/agents/{id}/memory for agent-specific memory retrieval.",
-      redirectTo: "/api/agents/{agentId}/memory",
-      timestamp: new Date().toISOString()
-    }
-  });
-});
 
 /**
  * @swagger
@@ -472,7 +96,14 @@ router.post('/chat', [
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/CryptoPricesResponse'
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   description: Crypto price data
  *       500:
  *         description: Server error
  */
@@ -480,11 +111,31 @@ router.get('/prices', getCryptoPrices);
 
 /**
  * @swagger
- * /api/agent/strategy:
+ * /api/agent/route:
  *   post:
- *     summary: Generate buy/sell strategy using specific agent
+ *     summary: Two-layer prompt router with Hedera blockchain execution
+ *     description: |
+ *       Advanced prompt routing system with real blockchain execution capabilities:
+ *       
+ *       **🔄 Layer 1: Message Classification**
+ *       - Analyzes user message to determine type: strategy, actions, information, or feedbacks
+ *       - Uses LLM to extract intent, keywords, and action subtypes
+ *       - Provides confidence scoring and reasoning
+ *       
+ *       **⚡ Layer 2: Specialized Processing + Execution**
+ *       - Routes to specialized LLMs based on message type
+ *       - **Actions**: ✅ Fully implemented with Hedera execution (transfer, swap, stake, lend, etc.)
+ *       - **Strategy/Information/Feedbacks**: 🔄 Coming soon
+ *       
+ *       **🚀 Execution Capabilities:**
+ *       - **Transfer**: ✅ Live HBAR & token transfers on Hedera testnet
+ *       - **Swap/Stake/Lend**: 📋 Guidance provided, execution coming soon
+ *       - **Security**: Agent-specific credentials, encrypted storage, validation
+ *       
+ *       **💡 Usage Modes:**
+ *       - `execute: false` → Get step-by-step guidance only
+ *       - `execute: true` → Perform real blockchain transactions
  *     tags: [AI Agent]
- *     description: Analyze user message and generate a comprehensive buy/sell strategy using a specific agent's configuration and memory. Each agent has its own strategy, risk tolerance, and conversation history.
  *     requestBody:
  *       required: true
  *       content:
@@ -493,35 +144,62 @@ router.get('/prices', getCryptoPrices);
  *             type: object
  *             required:
  *               - message
- *               - agentId
  *             properties:
  *               message:
  *                 type: string
- *                 description: User's message describing their investment intent and preferences
- *                 example: "I want to invest more in BTC since the market is dipping. What do you recommend?"
+ *                 description: User's message describing their intent
+ *                 example: "I want to swap my ETH for BTC on SEI network"
+ *               userId:
+ *                 type: string
+ *                 description: Optional user identifier for tracking
+ *                 example: "user123"
  *               agentId:
  *                 type: string
- *                 description: ID of the agent to use for strategy generation
- *                 example: "60d5ecb54b5d4c001f3a8b25"
+ *                 description: Optional agent identifier for personalization
+ *                 example: "agent456"
+ *               execute:
+ *                 type: boolean
+ *                 description: Whether to execute the action (currently supports transfers only)
+ *                 default: false
+ *                 example: true
  *           examples:
- *             dcaAgentStrategy:
- *               summary: DCA Agent Strategy
+ *             actionGuidanceExample:
+ *               summary: Action Request (Guidance Only)
+ *               description: Gets step-by-step guidance without executing the action
  *               value:
- *                 message: "I want to add more to my BTC position. Market seems to be dipping."
- *                 agentId: "60d5ecb54b5d4c001f3a8b25"
- *             momentumAgentStrategy:
- *               summary: Momentum Trading Agent Strategy
+ *                 message: "Transfer 100 USDC to my friend's wallet"
+ *                 userId: "user123"
+ *                 agentId: "agent456"
+ *                 execute: false
+ *             actionExecuteExample:
+ *               summary: Action Request (Execute Transfer)
+ *               description: Actually executes an HBAR transfer on Hedera testnet
  *               value:
- *                 message: "SEI is showing strong momentum. Should I enter a position?"
- *                 agentId: "60d5ecb54b5d4c001f3a8b26"
- *             beginnerRequest:
- *               summary: Beginner with HODL Agent
+ *                 message: "Transfer 5 HBAR to 0.0.1379"
+ *                 userId: "user123"
+ *                 agentId: "agent456"
+ *                 execute: true
+ *             actionComplexExample:
+ *               summary: Action Request (Complex Transfer)
+ *               description: Transfer with memo and natural language recipient
  *               value:
- *                 message: "I'm new to crypto and want to start investing safely."
- *                 agentId: "60d5ecb54b5d4c001f3a8b27"
+ *                 message: "Send 2 HBAR to my business partner memo: 'Monthly payment'"
+ *                 userId: "user123"
+ *                 agentId: "agent456"
+ *                 execute: true
+ *             strategyExample:
+ *               summary: Strategy Request
+ *               value:
+ *                 message: "How can I make money with memecoins?"
+ *                 userId: "user123"
+ *             infoExample:
+ *               summary: Information Request
+ *               value:
+ *                 message: "What's the current price of Bitcoin?"
+ *                 userId: "user123"
  *     responses:
  *       200:
- *         description: Generated buy/sell strategy with agent-specific recommendations and memory context
+ *         description: Successfully processed message through both layers
  *         content:
  *           application/json:
  *             schema:
@@ -533,65 +211,484 @@ router.get('/prices', getCryptoPrices);
  *                 data:
  *                   type: object
  *                   properties:
- *                     strategy:
- *                       $ref: '#/components/schemas/AIResponse'
- *                     agent:
+ *                     classification:
  *                       type: object
+ *                       description: Layer 1 classification results
  *                       properties:
- *                         id:
+ *                         type:
  *                           type: string
- *                           example: "60d5ecb54b5d4c001f3a8b25"
- *                         name:
+ *                           enum: [strategy, actions, information, feedbacks]
+ *                           example: "actions"
+ *                         confidence:
+ *                           type: number
+ *                           example: 0.95
+ *                         reasoning:
  *                           type: string
- *                           example: "My DCA Bot"
- *                         primaryStrategy:
+ *                           example: "Detected transfer action with specific amount and recipient"
+ *                         keywords:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                           example: ["transfer", "usdc", "wallet"]
+ *                         actionSubtype:
  *                           type: string
- *                           example: "DCA"
- *                         configuration:
+ *                           example: "transfer"
+ *                     processing:
+ *                       type: object
+ *                       description: Layer 2 specialized processing results
+ *                       properties:
+ *                         type:
+ *                           type: string
+ *                           example: "actions"
+ *                         subtype:
+ *                           type: string
+ *                           example: "transfer"
+ *                         result:
  *                           type: object
+ *                           description: Detailed processing result with optional execution
  *                           properties:
- *                             defaultBudget:
- *                               type: number
- *                               example: 500
- *                             riskTolerance:
+ *                             actionType:
  *                               type: string
- *                               example: "moderate"
- *                             preferredTokens:
+ *                               example: "transfer"
+ *                             steps:
  *                               type: array
  *                               items:
  *                                 type: string
- *                               example: ["BTC", "ETH", "SEI"]
- *                     originalMessage:
- *                       type: string
- *                       description: The original user message
- *                       example: "I want to add more to my BTC position..."
- *                     sessionId:
- *                       type: string
- *                       description: Session identifier for memory tracking
- *                       example: "127.0.0.1_Mozilla_5.0_Chrome_120.0"
- *                     memoryContext:
- *                       type: string
- *                       description: Indicates if previous interactions were considered
- *                       example: "Previous interactions considered"
- *                     timestamp:
- *                       type: string
- *                       format: date-time
- *                       example: "2024-01-15T10:30:00.000Z"
+ *                               example: ["Connect to wallet", "Enter recipient", "Confirm transaction"]
+ *                             warnings:
+ *                               type: array
+ *                               items:
+ *                                 type: string
+ *                               example: ["Always verify recipient address", "Check network fees"]
+ *                             riskLevel:
+ *                               type: string
+ *                               enum: [low, medium, high]
+ *                               example: "medium"
+ *                             estimatedTime:
+ *                               type: string
+ *                               example: "2-5 minutes"
+ *                             executionStatus:
+ *                               type: string
+ *                               enum: [guidance_only, completed, failed, not_implemented, fallback_no_execution]
+ *                               description: Status of action execution
+ *                               example: "completed"
+ *                             execution:
+ *                               type: object
+ *                               description: Execution results (only present when execute=true)
+ *                               properties:
+ *                                 success:
+ *                                   type: boolean
+ *                                   example: true
+ *                                 transactionDetails:
+ *                                   type: object
+ *                                   properties:
+ *                                     transactionId:
+ *                                       type: string
+ *                                       example: "0.0.1234@1234567890.123456789"
+ *                                     status:
+ *                                       type: string
+ *                                       example: "SUCCESS"
+ *                                     fromAccount:
+ *                                       type: string
+ *                                       example: "0.0.1378"
+ *                                     toAccount:
+ *                                       type: string
+ *                                       example: "0.0.1379"
+ *                                     amount:
+ *                                       type: number
+ *                                       example: 5
+ *                                     currency:
+ *                                       type: string
+ *                                       example: "HBAR"
+ *                                     memo:
+ *                                       type: string
+ *                                       example: "Transfer from agent"
+ *                                     timestamp:
+ *                                       type: string
+ *                                       format: date-time
+ *                                 executionSummary:
+ *                                   type: object
+ *                                   properties:
+ *                                     action:
+ *                                       type: string
+ *                                       example: "transfer"
+ *                                     amount:
+ *                                       type: number
+ *                                       example: 5
+ *                                     currency:
+ *                                       type: string
+ *                                       example: "HBAR"
+ *                                     from:
+ *                                       type: string
+ *                                       example: "0.0.1378"
+ *                                     to:
+ *                                       type: string
+ *                                       example: "0.0.1379"
+ *                                     transactionId:
+ *                                       type: string
+ *                                       example: "0.0.1234@1234567890.123456789"
+ *                                     status:
+ *                                       type: string
+ *                                       example: "SUCCESS"
+ *                                 parsedRequest:
+ *                                   type: object
+ *                                   description: Details of how the request was parsed
+ *                                   properties:
+ *                                     originalMessage:
+ *                                       type: string
+ *                                       example: "Transfer 5 HBAR to 0.0.1379"
+ *                                     extractedDetails:
+ *                                       type: object
+ *                                     resolvedRecipient:
+ *                                       type: string
+ *                                       example: "0.0.1379"
+ *                                     recipientResolved:
+ *                                       type: boolean
+ *                                       example: false
+ *                                 error:
+ *                                   type: string
+ *                                   description: Error message if execution failed
+ *                                   example: "Insufficient balance for transfer"
+ *                         status:
+ *                           type: string
+ *                           enum: [completed, error, placeholder]
+ *                           example: "completed"
+ *                     metadata:
+ *                       type: object
+ *                       properties:
+ *                         originalMessage:
+ *                           type: string
+ *                         processingTime:
+ *                           type: string
+ *                           example: "1250ms"
+ *                         timestamp:
+ *                           type: string
+ *                           format: date-time
+ *             examples:
+ *               guidanceOnlyResponse:
+ *                 summary: Guidance Only Response
+ *                 description: Response when execute=false or not provided
+ *                 value:
+ *                   success: true
+ *                   data:
+ *                     classification:
+ *                       type: "actions"
+ *                       actionSubtype: "transfer"
+ *                       confidence: 0.95
+ *                       reasoning: "Detected transfer action with specific amount and recipient"
+ *                       keywords: ["transfer", "hbar", "friend"]
+ *                     processing:
+ *                       type: "actions"
+ *                       subtype: "transfer"
+ *                       status: "completed"
+ *                       result:
+ *                         actionType: "transfer"
+ *                         executionStatus: "guidance_only"
+ *                         steps: 
+ *                           - "Connect your Hedera wallet"
+ *                           - "Enter recipient address: 0.0.1379"
+ *                           - "Enter amount: 5 HBAR"
+ *                           - "Review transaction details"
+ *                           - "Sign and submit transaction"
+ *                         warnings:
+ *                           - "Always verify recipient address before sending"
+ *                           - "Ensure sufficient HBAR balance for transaction + fees"
+ *                         riskLevel: "medium"
+ *                         estimatedTime: "2-5 minutes"
+ *                     metadata:
+ *                       originalMessage: "Transfer 5 HBAR to my friend"
+ *                       processingTime: "1250ms"
+ *                       timestamp: "2025-01-15T10:30:00Z"
+ *               executionSuccessResponse:
+ *                 summary: Successful Execution Response
+ *                 description: Response when execute=true and transfer succeeds
+ *                 value:
+ *                   success: true
+ *                   data:
+ *                     classification:
+ *                       type: "actions"
+ *                       actionSubtype: "transfer"
+ *                       confidence: 0.95
+ *                       reasoning: "Detected transfer action with specific amount and recipient"
+ *                       keywords: ["transfer", "hbar"]
+ *                     processing:
+ *                       type: "actions"
+ *                       subtype: "transfer"
+ *                       status: "completed"
+ *                       result:
+ *                         actionType: "transfer"
+ *                         executionStatus: "completed"
+ *                         steps:
+ *                           - "Connect your Hedera wallet"
+ *                           - "Enter recipient address: 0.0.1379"
+ *                           - "Enter amount: 5 HBAR"
+ *                           - "Review transaction details"
+ *                           - "Sign and submit transaction"
+ *                         warnings:
+ *                           - "Always verify recipient address before sending"
+ *                           - "Ensure sufficient HBAR balance for transaction + fees"
+ *                         riskLevel: "medium"
+ *                         estimatedTime: "2-5 minutes"
+ *                         execution:
+ *                           success: true
+ *                           transactionDetails:
+ *                             transactionId: "0.0.1234@1234567890.123456789"
+ *                             status: "SUCCESS"
+ *                             fromAccount: "0.0.1378"
+ *                             toAccount: "0.0.1379"
+ *                             amount: 5
+ *                             currency: "HBAR"
+ *                             memo: "Transfer from Test Agent"
+ *                             timestamp: "2025-01-15T10:30:15Z"
+ *                           executionSummary:
+ *                             action: "transfer"
+ *                             amount: 5
+ *                             currency: "HBAR"
+ *                             from: "0.0.1378"
+ *                             to: "0.0.1379"
+ *                             transactionId: "0.0.1234@1234567890.123456789"
+ *                             status: "SUCCESS"
+ *                           parsedRequest:
+ *                             originalMessage: "Transfer 5 HBAR to 0.0.1379"
+ *                             extractedDetails:
+ *                               amount: 5
+ *                               currency: "HBAR"
+ *                               recipient: "0.0.1379"
+ *                               recipientType: "account_id"
+ *                               isHbarTransfer: true
+ *                               needsRecipientResolution: false
+ *                             resolvedRecipient: "0.0.1379"
+ *                             recipientResolved: false
+ *                     metadata:
+ *                       originalMessage: "Transfer 5 HBAR to 0.0.1379"
+ *                       processingTime: "3250ms"
+ *                       timestamp: "2025-01-15T10:30:00Z"
+ *               executionFailureResponse:
+ *                 summary: Failed Execution Response
+ *                 description: Response when execute=true but transfer fails
+ *                 value:
+ *                   success: true
+ *                   data:
+ *                     classification:
+ *                       type: "actions"
+ *                       actionSubtype: "transfer"
+ *                       confidence: 0.95
+ *                     processing:
+ *                       type: "actions"
+ *                       subtype: "transfer"
+ *                       status: "completed"
+ *                       result:
+ *                         actionType: "transfer"
+ *                         executionStatus: "failed"
+ *                         execution:
+ *                           success: false
+ *                           error: "Insufficient balance for transfer"
+ *                           status: "failed"
+ *                     metadata:
+ *                       originalMessage: "Transfer 100000 HBAR to 0.0.1379"
+ *                       processingTime: "2150ms"
+ *                       timestamp: "2025-01-15T10:30:00Z"
  *       400:
- *         description: Invalid request
- *       404:
- *         description: Agent not found
+ *         description: Invalid request parameters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Validation error"
+ *                 errors:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       msg:
+ *                         type: string
+ *                         example: "Message is required"
+ *                       param:
+ *                         type: string
+ *                         example: "message"
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Internal server error"
+ */
+router.post('/route', [
+  body('message').notEmpty().withMessage('Message is required')
+    .isLength({ min: 3, max: 1000 }).withMessage('Message must be between 3 and 1000 characters'),
+  body('userId').optional().isString().withMessage('User ID must be a string'),
+  body('agentId').optional().isString().withMessage('Agent ID must be a string'),
+  body('execute').optional().isBoolean().withMessage('Execute must be a boolean')
+], promptRouterController.routePrompt);
+
+/**
+ * @swagger
+ * /api/agent/router-info:
+ *   get:
+ *     summary: Get prompt router information and capabilities
+ *     description: Returns detailed information about the two-layer prompt routing system, supported types, and service status
+ *     tags: [AI Agent]
+ *     responses:
+ *       200:
+ *         description: Router information retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     routerVersion:
+ *                       type: string
+ *                       example: "1.0.0"
+ *                     description:
+ *                       type: string
+ *                       example: "Two-layer prompt routing system for crypto operations"
+ *                     layer1:
+ *                       type: object
+ *                       description: Message classification layer information
+ *                     layer2:
+ *                       type: object
+ *                       description: Specialized processing layer information
+ *                       properties:
+ *                         supportedTypes:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                           example: ["strategy", "actions", "information", "feedbacks"]
+ *                         executionCapabilities:
+ *                           type: object
+ *                           description: Real blockchain execution capabilities
+ *                           properties:
+ *                             enabled:
+ *                               type: boolean
+ *                               example: true
+ *                             supportedActions:
+ *                               type: array
+ *                               items:
+ *                                 type: string
+ *                               example: ["transfer"]
+ *                             network:
+ *                               type: string
+ *                               example: "hedera-testnet"
+ *                             supportedCurrencies:
+ *                               type: array
+ *                               items:
+ *                                 type: string
+ *                               example: ["HBAR", "USDC", "USDT", "BTC", "ETH"]
+ *                     usage:
+ *                       type: object
+ *                       description: Usage statistics
+ *                       properties:
+ *                         totalRequests:
+ *                           type: number
+ *                           example: 150
+ *                         executedActions:
+ *                           type: number
+ *                           example: 23
+ *                         successRate:
+ *                           type: number
+ *                           example: 0.92
  *       500:
  *         description: Server error
  */
-// @desc    Generate buy/sell strategy using specific agent
-// @route   POST /api/agent/strategy
-// @access  Public
-router.post('/strategy', [
-  body('message').notEmpty().withMessage('Message is required')
-    .isLength({ min: 10, max: 1000 }).withMessage('Message must be between 10 and 1000 characters'),
-  body('agentId').notEmpty().withMessage('Agent ID is required')
-    .isMongoId().withMessage('Invalid agent ID')
-], generateDCAStrategy);
+router.get('/router-info', promptRouterController.getRouterInfo);
+
+/**
+ * @swagger
+ * /api/agent/actions:
+ *   get:
+ *     summary: Get supported blockchain actions
+ *     description: Returns list of all supported blockchain actions that can be processed by the actions LLM
+ *     tags: [AI Agent]
+ *     responses:
+ *       200:
+ *         description: Supported actions retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     supportedActions:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: ["transfer", "swap", "stake", "lend", "borrow", "bridge", "buy", "sell", "mint", "burn", "other"]
+ *                     count:
+ *                       type: number
+ *                       example: 11
+ *                     descriptions:
+ *                       type: object
+ *                       description: Description of each action type
+ *                       example:
+ *                         transfer: "Send HBAR or tokens between accounts"
+ *                         swap: "Exchange one token for another"
+ *                         stake: "Stake tokens to earn rewards"
+ *                         lend: "Lend assets to earn interest"
+ *                     executionSupport:
+ *                       type: object
+ *                       description: Which actions support real execution
+ *                       properties:
+ *                         transfer:
+ *                           type: object
+ *                           properties:
+ *                             supported:
+ *                               type: boolean
+ *                               example: true
+ *                             networks:
+ *                               type: array
+ *                               items:
+ *                                 type: string
+ *                               example: ["hedera-testnet"]
+ *                             currencies:
+ *                               type: array
+ *                               items:
+ *                                 type: string
+ *                               example: ["HBAR", "USDC", "USDT"]
+ *                         swap:
+ *                           type: object
+ *                           properties:
+ *                             supported:
+ *                               type: boolean
+ *                               example: false
+ *                             reason:
+ *                               type: string
+ *                               example: "Coming soon - DEX integration planned"
+ *                         stake:
+ *                           type: object
+ *                           properties:
+ *                             supported:
+ *                               type: boolean
+ *                               example: false
+ *                             reason:
+ *                               type: string
+ *                               example: "Coming soon - staking protocols integration planned"
+ *       500:
+ *         description: Server error
+ */
+router.get('/actions', promptRouterController.getSupportedActions);
 
 module.exports = router; 

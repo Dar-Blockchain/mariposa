@@ -1,0 +1,1024 @@
+require("dotenv").config();
+const { 
+  HederaLangchainToolkit, 
+  AgentMode, 
+  coreHTSPluginToolNames, 
+  coreConsensusPluginToolNames, 
+  coreQueriesPluginToolNames,
+  coreQueriesPlugin,
+  coreHTSPlugin,
+  coreConsensusPlugin
+} = require('hedera-agent-kit');
+const { Client, PrivateKey, PublicKey, TransferTransaction, Hbar, AccountId, TokenTransferTransaction } = require('@hashgraph/sdk');
+const AgentModel = require('../models/Agent');
+const EvaluationTopicModel = require('../models/EvaluationTopic');
+
+// Lazy client initialization
+let client = null;
+let clientInitialized = false;
+
+/**
+ * Get or initialize Hedera client
+ * @returns {Client|null} Hedera client instance
+ */
+const getClient = () => {
+  if (!client && !clientInitialized) {
+    try {
+      if (!process.env.HEDERA_ACCOUNT_ID || !process.env.HEDERA_PRIVATE_KEY) {
+        console.warn('⚠️  Hedera Tools: Environment variables not set. Functionality will be limited.');
+        clientInitialized = true;
+        return null;
+      }
+      
+      client = Client.forTestnet().setOperator(
+        process.env.HEDERA_ACCOUNT_ID,
+        PrivateKey.fromStringECDSA(process.env.HEDERA_PRIVATE_KEY),
+      );
+      
+      // Set network timeout for faster response
+      client.setNetworkTimeout(10000);
+      
+      clientInitialized = true;
+      console.log('✅ Hedera Tools client initialized successfully');
+    } catch (error) {
+      console.error('❌ Error initializing Hedera Tools client:', error.message);
+      clientInitialized = true;
+      return null;
+    }
+  }
+  return client;
+};
+
+// Extract the specific tools from hedera-agent-kit
+const {
+  CREATE_FUNGIBLE_TOKEN_TOOL,
+} = coreHTSPluginToolNames;
+
+const {
+  CREATE_TOPIC_TOOL,
+  SUBMIT_TOPIC_MESSAGE_TOOL,
+} = coreConsensusPluginToolNames;
+
+const {
+  GET_HBAR_BALANCE_QUERY_TOOL,
+} = coreQueriesPluginToolNames;
+
+class HederaAgentKitService {
+  /**
+   * Helper function to create agent-specific Hedera toolkit
+   * @param {string} agentId - Agent MongoDB ObjectId
+   * @returns {Object} Agent and toolkit instance
+   */
+  async createAgentToolkit(agentId) {
+    const agent = await AgentModel.findById(agentId).select('+hederaPrivateKey');
+    if (!agent) {
+      throw new Error('Agent not found');
+    }
+
+    // Ensure agent has Hedera credentials
+    if (!agent.hederaAccountId || !agent.hederaPrivateKey) {
+      throw new Error('Agent does not have Hedera credentials configured');
+    }
+
+    // Decrypt private key if it's encrypted
+    let privateKey = agent.hederaPrivateKey;
+    try {
+      // Try to decrypt if it's encrypted
+      const crypto = require('crypto');
+      const encryptionKey = process.env.WALLET_ENCRYPTION_KEY || 'default-encryption-key';
+      const decipher = crypto.createDecipher('aes-256-cbc', encryptionKey);
+      let decrypted = decipher.update(privateKey, 'hex', 'utf8');
+      decrypted += decipher.final('utf8');
+      privateKey = decrypted;
+    } catch (decryptError) {
+      // If decryption fails, assume it's already in plain text
+      privateKey = agent.hederaPrivateKey;
+    }
+
+    // Determine network from environment
+    const network = process.env.HEDERA_NETWORK || 'testnet';
+    let agentClient;
+
+    if (network === 'mainnet') {
+      agentClient = Client.forMainnet();
+    } else {
+      agentClient = Client.forTestnet();
+    }
+
+    // Create client with agent's credentials
+    agentClient.setOperator(
+      agent.hederaAccountId,
+      PrivateKey.fromStringDer(privateKey)
+    );
+
+    // Set default fees for better performance
+    try {
+      const { Hbar } = require('@hashgraph/sdk');
+      agentClient.setDefaultMaxTransactionFee(new Hbar(100));
+      agentClient.setDefaultMaxQueryPayment(new Hbar(50));
+    } catch (error) {
+      // Ignore if these methods don't exist in this version
+      console.warn('⚠️  Could not set default fees:', error.message);
+    }
+
+    // Create toolkit for this specific agent
+    const agentToolkit = new HederaLangchainToolkit({
+      client: agentClient,
+      configuration: {
+        tools: [
+          CREATE_TOPIC_TOOL,
+          SUBMIT_TOPIC_MESSAGE_TOOL,
+          CREATE_FUNGIBLE_TOKEN_TOOL,
+          GET_HBAR_BALANCE_QUERY_TOOL,
+        ],
+        plugins: [coreHTSPlugin, coreConsensusPlugin, coreQueriesPlugin],
+        context: {
+          mode: AgentMode.AUTONOMOUS,
+        },
+      },
+    });
+
+    return { agent, toolkit: agentToolkit };
+  }
+
+  /**
+   * Create a fungible token directly using the toolkit
+   * @param {Object} params - Token creation parameters
+   * @returns {Object} Token creation result
+   */
+  async createFungibleToken({ name, symbol, decimals = 2, initialSupply = 1000, treasuryAccount, agentId }) {
+    try {
+      if (!name || !symbol) {
+        throw new Error("Token name and symbol are required");
+      }
+
+      if (!agentId) {
+        throw new Error("Agent ID is required");
+      }
+
+      // Create agent-specific toolkit
+      const { toolkit: agentToolkit } = await this.createAgentToolkit(agentId);
+
+      // Get the tools from the agent's toolkit
+      const tools = agentToolkit.getTools();
+      const createTokenTool = tools.find(tool => tool.name === 'create_fungible_token_tool');
+      
+      if (!createTokenTool) {
+        throw new Error("Create token tool not found");
+      }
+
+      // Call the tool directly without LLM
+      console.log('Creating token with params:', {
+        tokenName: name,
+        tokenSymbol: symbol,
+        decimals,
+        initialSupply
+      });
+      
+      const result = await createTokenTool._call({
+        tokenName: name,
+        tokenSymbol: symbol,
+        decimals,
+        initialSupply,
+        treasuryAccountId: treasuryAccount || process.env.HEDERA_ACCOUNT_ID
+      });
+
+      return {
+        success: true,
+        tokenId: result.tokenId,
+        transactionId: result.transactionId,
+        message: `Fungible token ${symbol} created successfully`
+      };
+
+    } catch (error) {
+      throw new Error(`Token creation failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Create a consensus topic
+   * @param {Object} params - Topic creation parameters
+   * @returns {Object} Topic creation result
+   */
+  async createTopic({ memo, adminKey, submitKey, agentId }) {
+    try {
+      if (!agentId) {
+        throw new Error("Agent ID is required");
+      }
+
+      // Create agent-specific toolkit
+      const { toolkit: agentToolkit } = await this.createAgentToolkit(agentId);
+
+      // Get the tools from the agent's toolkit
+      const tools = agentToolkit.getTools();
+      const createTopicTool = tools.find(tool => tool.name === 'create_topic_tool');
+
+      if (!createTopicTool) {
+        throw new Error("Create topic tool not found");
+      }
+
+      // Prepare topic parameters
+      const topicParams = {
+        topicMemo: memo || `Topic created at ${new Date().toISOString()}`
+      };
+
+      // Add keys if provided
+      if (adminKey) {
+        topicParams.adminKey = PublicKey.fromString(adminKey);
+      }
+      if (submitKey) {
+        topicParams.submitKey = PublicKey.fromString(submitKey);
+      }
+
+      // Call the tool directly without LLM
+      const result = await createTopicTool._call(topicParams);
+
+      return {
+        success: true,
+        topicId: result.topicId,
+        transactionId: result.transactionId,
+        message: "Consensus topic created successfully"
+      };
+
+    } catch (error) {
+      throw new Error(`Topic creation failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Submit a message to a consensus topic
+   * @param {Object} params - Message submission parameters
+   * @returns {Object} Message submission result
+   */
+  async submitTopicMessage({ topicId, message, agentId }) {
+    try {
+      if (!topicId || !message) {
+        throw new Error("Topic ID and message are required");
+      }
+
+      if (!agentId) {
+        throw new Error("Agent ID is required");
+      }
+
+      // Create agent-specific toolkit
+      const { toolkit: agentToolkit } = await this.createAgentToolkit(agentId);
+
+      // Get the tools from the agent's toolkit
+      const tools = agentToolkit.getTools();
+      const submitMessageTool = tools.find(tool => tool.name === 'submit_topic_message_tool');
+
+      if (!submitMessageTool) {
+        throw new Error("Submit message tool not found");
+      }
+
+      // Call the tool directly without LLM
+      const result = await submitMessageTool._call({
+        topicId,
+        message
+      });
+
+      return {
+        success: true,
+        transactionId: result.transactionId,
+        topicId,
+        message: "Message submitted to topic successfully"
+      };
+
+    } catch (error) {
+      throw new Error(`Message submission failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get HBAR balance for an account
+   * @param {Object} params - Balance query parameters
+   * @returns {Object} Balance query result
+   */
+  async getHbarBalance({ accountId, agentId }) {
+    try {
+      if (!accountId) {
+        throw new Error("Account ID is required");
+      }
+
+      if (!agentId) {
+        throw new Error("Agent ID is required");
+      }
+
+      // Create agent-specific toolkit
+      const { toolkit: agentToolkit } = await this.createAgentToolkit(agentId);
+
+      // Get the tools from the agent's toolkit
+      const tools = agentToolkit.getTools();
+      const balanceQueryTool = tools.find(tool => tool.name === 'get_hbar_balance_query_tool');
+
+      if (!balanceQueryTool) {
+        throw new Error("Balance query tool not found");
+      }
+
+      // Call the tool directly without LLM
+      const result = await balanceQueryTool._call({
+        accountId
+      });
+
+      return {
+        success: true,
+        accountId,
+        balance: result.balance,
+        unit: "HBAR",
+        message: "Balance retrieved successfully"
+      };
+
+    } catch (error) {
+      throw new Error(`Balance query failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get current account balance (for the agent's account)
+   * @param {Object} params - Agent balance query parameters
+   * @returns {Object} Agent balance result
+   */
+  async getMyBalance({ agentId }) {
+    try {
+      if (!agentId) {
+        throw new Error("Agent ID is required");
+      }
+
+      // Create agent-specific toolkit
+      const { agent, toolkit: agentToolkit } = await this.createAgentToolkit(agentId);
+      const accountId = agent.hederaAccountId || agent.accountId;
+
+      // Get the tools from the agent's toolkit
+      const tools = agentToolkit.getTools();
+      const balanceQueryTool = tools.find(tool => tool.name === 'get_hbar_balance_query_tool');
+
+      if (!balanceQueryTool) {
+        throw new Error("Balance query tool not found");
+      }
+
+      // Call the tool directly without LLM
+      const result = await balanceQueryTool._call({
+        accountId
+      });
+
+      return {
+        success: true,
+        accountId,
+        balance: result.balance,
+        unit: "HBAR",
+        message: "Your balance retrieved successfully"
+      };
+
+    } catch (error) {
+      throw new Error(`Balance query failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get available tools information
+   * @param {Object} params - Tools query parameters
+   * @returns {Object} Available tools information
+   */
+  async getAvailableTools({ agentId }) {
+    try {
+      if (!agentId) {
+        throw new Error("Agent ID is required");
+      }
+
+      // Create agent-specific toolkit
+      const { toolkit: agentToolkit } = await this.createAgentToolkit(agentId);
+      const tools = agentToolkit.getTools();
+      
+      const toolsInfo = tools.map(tool => ({
+        name: tool.name,
+        description: tool.description || "No description available",
+        parameters: tool.parameters || {}
+      }));
+
+      return {
+        success: true,
+        tools: toolsInfo,
+        count: tools.length,
+        message: "Available Hedera tools retrieved successfully"
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to get tools information: ${error.message}`);
+    }
+  }
+
+  /**
+   * Create evaluation topic for candidate pipeline
+   * @param {Object} params - Evaluation topic creation parameters
+   * @returns {Object} Evaluation topic creation result
+   */
+  async createEvaluationTopic({ company, postId, candidateName, candidateId, agentId }) {
+    try {
+      if (!company || !postId || !candidateName || !agentId) {
+        throw new Error("Company, postId, candidateName, and agentId are required");
+      }
+
+      // Get agent and create toolkit
+      const { agent, toolkit } = await this.createAgentToolkit(agentId);
+      
+      // Create HCS-11 compliant memo (keep it short for Hedera limits)
+      const topicMemo = `eval:${company}:${postId}:${candidateName}`;
+
+      // Get create topic tool
+      const tools = toolkit.getTools();
+      const createTopicTool = tools.find(tool => tool.name === 'create_topic_tool');
+
+      if (!createTopicTool) {
+        throw new Error("Create topic tool not found");
+      }
+
+      // Create the topic with agent's public key
+      const publicKeyString = agent.hederaPublicKey;
+      if (!publicKeyString) {
+        throw new Error("Agent public key not found in database");
+      }
+
+      let agentPublicKey;
+      try {
+        agentPublicKey = PublicKey.fromString(publicKeyString);
+      } catch (error) {
+        throw new Error(`Invalid public key format in database: ${error.message}`);
+      }
+
+      const result = await createTopicTool._call({
+        topicMemo: topicMemo,
+        isSubmitKey: false,
+        submitKey: agentPublicKey,
+        adminKey: agentPublicKey
+      });
+      
+      // Parse result as JSON
+      const parsedResult = typeof result === 'string' ? JSON.parse(result) : result;
+      let topicIdString = parsedResult.topicId.shard.low + "." + parsedResult.topicId.realm.low + "." + parsedResult.topicId.num.low;
+      
+      // Save to database
+      const evaluationTopic = new EvaluationTopicModel({
+        topicId: topicIdString,
+        company,
+        postId,
+        candidateName,
+        candidateId,
+        topicMemo,
+        createdBy: agent.name,
+        evaluations: []
+      });
+
+      await evaluationTopic.save();
+
+      return {
+        success: true,
+        topicId: topicIdString,
+        transactionId: parsedResult.transactionId,
+        topicMemo,
+        message: `Evaluation topic created for ${candidateName} at ${company}`,
+        createdBy: agent.name
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to create evaluation topic: ${error.message}`);
+    }
+  }
+
+  /**
+   * Submit evaluation message to existing topic
+   * @param {Object} params - Evaluation submission parameters
+   * @returns {Object} Evaluation submission result
+   */
+  async submitEvaluationMessage({ topicId, agentId, evaluation }) {
+    try {
+      const { passed, score, feedback, interviewNotes } = evaluation;
+
+      if (!topicId || !agentId || passed === undefined) {
+        throw new Error("TopicId, agentId, and evaluation.passed are required");
+      }
+
+      // Get evaluation topic from database
+      const evaluationTopic = await EvaluationTopicModel.findOne({ topicId });
+      if (!evaluationTopic) {
+        throw new Error("Evaluation topic not found");
+      }
+
+      // Get agent and create toolkit
+      const { agent, toolkit } = await this.createAgentToolkit(agentId);
+
+      // Create HCS-11 compliant evaluation message
+      const hcs11Message = {
+        standard: "HCS-11",
+        type: "agent_validation",
+        agentProfile: {
+          name: agent.name,
+          avatarName: agent.avatarName,
+          role: agent.role,
+          accountId: agent.hederaAccountId || agent.accountId
+        },
+        evaluation: {
+          topicId,
+          candidate: evaluationTopic.candidateName,
+          company: evaluationTopic.company,
+          postId: evaluationTopic.postId,
+          result: {
+            passed,
+            score: score || null,
+            feedback: feedback || "",
+            interviewNotes: interviewNotes || ""
+          },
+          timestamp: new Date().toISOString()
+        },
+        coordinatorMessage: {
+          to: "coordinator_agent",
+          action: passed ? "candidate_approved" : "candidate_rejected",
+          summary: `${agent.role} evaluation: ${passed ? 'PASSED' : 'FAILED'}${score ? ` (Score: ${score})` : ''}`
+        }
+      };
+
+      // Get submit message tool
+      const tools = toolkit.getTools();
+      const submitMessageTool = tools.find(tool => tool.name === 'submit_topic_message_tool');
+
+      if (!submitMessageTool) {
+        throw new Error("Submit message tool not found");
+      }
+
+      // Submit the HCS-11 message to the topic
+      const result = await submitMessageTool._call({
+        topicId: topicId,
+        message: JSON.stringify(hcs11Message)
+      });
+
+      const parsedResult = typeof result === 'string' ? JSON.parse(result) : result;
+      let messageId = parsedResult.transactionId.accountId.shard.low + "." + 
+                     parsedResult.transactionId.accountId.realm.low + "." + 
+                     parsedResult.transactionId.accountId.num.low;
+
+      // Update evaluation topic in database
+      evaluationTopic.evaluations.push({
+        agentId: agent._id,
+        agentName: agent.name,
+        agentRole: agent.role,
+        messageId: messageId,
+        evaluation: {
+          passed,
+          score,
+          feedback,
+          interviewNotes
+        }
+      });
+
+      // Check if all required agents have evaluated
+      const requiredAgents = await AgentModel.find({ isActive: true });
+      const completedEvaluations = evaluationTopic.evaluations.length;
+
+      if (completedEvaluations >= requiredAgents.length) {
+        evaluationTopic.status = "completed";
+        evaluationTopic.finalResult = evaluationTopic.calculateFinalResult();
+      }
+
+      await evaluationTopic.save();
+
+      return {
+        success: true,
+        topicId: topicId,
+        messageId: result.transactionId,
+        agentProfile: hcs11Message.agentProfile,
+        evaluation: hcs11Message.evaluation,
+        coordinatorMessage: hcs11Message.coordinatorMessage,
+        topicStatus: evaluationTopic.status,
+        message: `HCS-11 evaluation message submitted by ${agent.name} to topic ${topicId}`
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to submit evaluation message: ${error.message}`);
+    }
+  }
+
+  /**
+   * Send agent validation message to evaluation topic
+   * @param {Object} params - Validation message parameters
+   * @returns {Object} Validation message result
+   */
+  async sendValidationMessage({ topicId, agentId, evaluation }) {
+    try {
+      const { passed, score, feedback, interviewNotes } = evaluation;
+
+      if (!topicId || !agentId || passed === undefined) {
+        throw new Error("TopicId, agentId, and evaluation.passed are required");
+      }
+
+      // Get evaluation topic
+      const evaluationTopic = await EvaluationTopicModel.findOne({ topicId });
+      if (!evaluationTopic) {
+        throw new Error("Evaluation topic not found");
+      }
+
+      // Get agent and create toolkit
+      const { agent, toolkit } = await this.createAgentToolkit(agentId);
+
+      // Create HCS-11 compliant validation message
+      const validationMessage = {
+        standard: "HCS-11",
+        type: "agent_validation",
+        agentProfile: {
+          name: agent.name,
+          avatarName: agent.avatarName,
+          role: agent.role,
+          accountId: agent.hederaAccountId || agent.accountId
+        },
+        evaluation: {
+          topicId,
+          candidate: evaluationTopic.candidateName,
+          company: evaluationTopic.company,
+          postId: evaluationTopic.postId,
+          result: {
+            passed,
+            score: score || null,
+            feedback: feedback || "",
+            interviewNotes: interviewNotes || ""
+          },
+          timestamp: new Date().toISOString()
+        },
+        coordinatorMessage: {
+          to: "coordinator_agent",
+          action: passed ? "candidate_approved" : "candidate_rejected",
+          summary: `${agent.role} evaluation: ${passed ? 'PASSED' : 'FAILED'}${score ? ` (Score: ${score})` : ''}`
+        }
+      };
+
+      // Get submit message tool
+      const tools = toolkit.getTools();
+      const submitMessageTool = tools.find(tool => tool.name === 'submit_topic_message_tool');
+
+      if (!submitMessageTool) {
+        throw new Error("Submit message tool not found");
+      }
+
+      // Submit the message
+      const result = await submitMessageTool._call({
+        topicId: topicId,
+        message: JSON.stringify(validationMessage)
+      });
+
+      // Update evaluation topic in database
+      evaluationTopic.evaluations.push({
+        agentId: agent._id,
+        agentName: agent.name,
+        agentRole: agent.role,
+        messageId: result.transactionId,
+        evaluation: {
+          passed,
+          score,
+          feedback,
+          interviewNotes
+        }
+      });
+
+      // Check if all required agents have evaluated
+      const requiredAgents = await AgentModel.find({ isActive: true });
+      const completedEvaluations = evaluationTopic.evaluations.length;
+
+      if (completedEvaluations >= requiredAgents.length) {
+        evaluationTopic.status = "completed";
+        evaluationTopic.finalResult = evaluationTopic.calculateFinalResult();
+      }
+
+      await evaluationTopic.save();
+
+      return {
+        success: true,
+        messageId: result.transactionId,
+        agentProfile: validationMessage.agentProfile,
+        evaluation: validationMessage.evaluation,
+        coordinatorMessage: validationMessage.coordinatorMessage,
+        topicStatus: evaluationTopic.status,
+        message: `Validation message sent by ${agent.name} (${agent.role})`
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to send validation message: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get evaluation topic details and messages
+   * @param {string} topicId - Topic ID to retrieve
+   * @returns {Object} Evaluation topic details
+   */
+  async getEvaluationTopic(topicId) {
+    try {
+      const evaluationTopic = await EvaluationTopicModel.findOne({ topicId })
+        .populate('evaluations.agentId', 'name avatarName role');
+
+      if (!evaluationTopic) {
+        throw new Error("Evaluation topic not found");
+      }
+
+      return {
+        success: true,
+        data: evaluationTopic
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to get evaluation topic: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get all evaluation topics for a company/post
+   * @param {Object} filters - Query filters
+   * @returns {Object} Evaluation topics list
+   */
+  async getEvaluationTopics(filters = {}) {
+    try {
+      const { company, postId, status } = filters;
+      
+      const filter = {};
+      if (company) filter.company = company;
+      if (postId) filter.postId = postId;
+      if (status) filter.status = status;
+
+      const evaluationTopics = await EvaluationTopicModel.find(filter)
+        .populate('evaluations.agentId', 'name avatarName role')
+        .sort({ createdAt: -1 });
+
+      return {
+        success: true,
+        data: evaluationTopics
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to get evaluation topics: ${error.message}`);
+    }
+  }
+
+  /**
+   * Transfer HBAR between accounts
+   * @param {Object} params - Transfer parameters
+   * @returns {Object} Transfer result
+   */
+  async transferHbar({ fromAgentId, toAccountId, amount, memo }) {
+    try {
+      if (!fromAgentId || !toAccountId || !amount) {
+        throw new Error("Agent ID, recipient account ID, and amount are required");
+      }
+
+      // Get agent and create toolkit
+      const { agent, toolkit: agentToolkit } = await this.createAgentToolkit(fromAgentId);
+      
+      // Get agent's client
+      const agentClient = agentToolkit.client;
+      
+      // Convert amount to Hbar
+      const transferAmount = new Hbar(amount);
+      
+      // Create transfer transaction
+      const transferTx = new TransferTransaction()
+        .addHbarTransfer(agent.hederaAccountId, transferAmount.negated())
+        .addHbarTransfer(AccountId.fromString(toAccountId), transferAmount);
+      
+      // Add memo if provided
+      if (memo) {
+        transferTx.setTransactionMemo(memo);
+      }
+      
+      // Freeze and sign the transaction
+      const frozenTx = await transferTx.freezeWith(agentClient);
+      const signedTx = await frozenTx.sign(PrivateKey.fromStringDer(
+        await this.getDecryptedPrivateKey(agent)
+      ));
+      
+      // Execute the transaction
+      const txResponse = await signedTx.execute(agentClient);
+      const receipt = await txResponse.getReceipt(agentClient);
+      
+      console.log(`✅ HBAR transfer completed: ${amount} HBAR to ${toAccountId}`);
+      
+      return {
+        success: true,
+        transactionId: txResponse.transactionId.toString(),
+        status: receipt.status.toString(),
+        fromAccount: agent.hederaAccountId,
+        toAccount: toAccountId,
+        amount: amount,
+        currency: 'HBAR',
+        memo: memo || null,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('❌ HBAR transfer failed:', error);
+      throw new Error(`HBAR transfer failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Transfer tokens between accounts
+   * @param {Object} params - Token transfer parameters
+   * @returns {Object} Transfer result
+   */
+  async transferToken({ fromAgentId, toAccountId, tokenId, amount, memo }) {
+    try {
+      if (!fromAgentId || !toAccountId || !tokenId || !amount) {
+        throw new Error("Agent ID, recipient account ID, token ID, and amount are required");
+      }
+
+      // Get agent and create toolkit
+      const { agent, toolkit: agentToolkit } = await this.createAgentToolkit(fromAgentId);
+      
+      // Get agent's client
+      const agentClient = agentToolkit.client;
+      
+      // Create token transfer transaction
+      const transferTx = new TokenTransferTransaction()
+        .addTokenTransfer(tokenId, agent.hederaAccountId, -amount)
+        .addTokenTransfer(tokenId, toAccountId, amount);
+      
+      // Add memo if provided
+      if (memo) {
+        transferTx.setTransactionMemo(memo);
+      }
+      
+      // Freeze and sign the transaction
+      const frozenTx = await transferTx.freezeWith(agentClient);
+      const signedTx = await frozenTx.sign(PrivateKey.fromStringDer(
+        await this.getDecryptedPrivateKey(agent)
+      ));
+      
+      // Execute the transaction
+      const txResponse = await signedTx.execute(agentClient);
+      const receipt = await txResponse.getReceipt(agentClient);
+      
+      console.log(`✅ Token transfer completed: ${amount} ${tokenId} to ${toAccountId}`);
+      
+      return {
+        success: true,
+        transactionId: txResponse.transactionId.toString(),
+        status: receipt.status.toString(),
+        fromAccount: agent.hederaAccountId,
+        toAccount: toAccountId,
+        amount: amount,
+        tokenId: tokenId,
+        memo: memo || null,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('❌ Token transfer failed:', error);
+      throw new Error(`Token transfer failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Parse transfer details from user message using LLM
+   * @param {string} message - User's transfer message
+   * @param {string} agentId - Agent ID for context
+   * @returns {Object} Parsed transfer details
+   */
+  async parseTransferRequest(message, agentId) {
+    try {
+      // Simple regex-based parsing for now (can be enhanced with LLM later)
+      const parseResult = this.extractTransferDetails(message);
+      
+      // Validate the agent exists
+      const agent = await AgentModel.findById(agentId);
+      if (!agent) {
+        throw new Error('Agent not found');
+      }
+      
+      return {
+        success: true,
+        details: parseResult,
+        fromAgent: {
+          id: agent._id,
+          name: agent.name,
+          accountId: agent.hederaAccountId
+        },
+        parsedAt: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('❌ Transfer parsing failed:', error);
+      throw new Error(`Transfer parsing failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Extract transfer details from message using regex patterns
+   * @param {string} message - User message
+   * @returns {Object} Extracted details
+   */
+  extractTransferDetails(message) {
+    const lowerMessage = message.toLowerCase();
+    
+    // Extract amount and currency
+    const amountMatch = message.match(/(\d+(?:\.\d+)?)\s*(hbar|usdc|usdt|btc|eth|sei)/i);
+    
+    // Extract recipient (account ID or description)
+    const accountIdMatch = message.match(/(0\.0\.\d+)/);
+    const recipientMatch = message.match(/to\s+(?:my\s+)?(friend|wallet|account|address)(?:'s)?(?:\s+wallet)?/i);
+    
+    // Extract memo
+    const memoMatch = message.match(/(?:memo|note|message):\s*["']([^"']+)["']/i);
+    
+    let amount = null;
+    let currency = 'HBAR'; // Default
+    let recipient = null;
+    let recipientType = 'account_id';
+    let memo = null;
+    
+    if (amountMatch) {
+      amount = parseFloat(amountMatch[1]);
+      currency = amountMatch[2].toUpperCase();
+    }
+    
+    if (accountIdMatch) {
+      recipient = accountIdMatch[1];
+      recipientType = 'account_id';
+    } else if (recipientMatch) {
+      recipient = recipientMatch[1];
+      recipientType = 'description';
+    }
+    
+    if (memoMatch) {
+      memo = memoMatch[1];
+    }
+    
+    // Determine if it's HBAR or token transfer
+    const isHbarTransfer = currency === 'HBAR';
+    const tokenId = isHbarTransfer ? null : this.getTokenId(currency);
+    
+    return {
+      amount,
+      currency,
+      recipient,
+      recipientType,
+      memo,
+      isHbarTransfer,
+      tokenId,
+      needsRecipientResolution: recipientType === 'description',
+      extracted: {
+        amountMatch: !!amountMatch,
+        recipientMatch: !!recipientMatch || !!accountIdMatch,
+        memoMatch: !!memoMatch
+      }
+    };
+  }
+
+  /**
+   * Get token ID for currency symbol (placeholder - would need actual token registry)
+   * @param {string} currency - Currency symbol
+   * @returns {string|null} Token ID
+   */
+  getTokenId(currency) {
+    // Placeholder token IDs for SEI testnet
+    const tokenRegistry = {
+      'USDC': '0.0.12345', // Placeholder
+      'USDT': '0.0.12346', // Placeholder
+      'BTC': '0.0.12347',  // Placeholder
+      'ETH': '0.0.12348',  // Placeholder
+      'SEI': null // Native token
+    };
+    
+    return tokenRegistry[currency] || null;
+  }
+
+  /**
+   * Helper to get decrypted private key
+   * @param {Object} agent - Agent object
+   * @returns {string} Decrypted private key
+   */
+  async getDecryptedPrivateKey(agent) {
+    let privateKey = agent.hederaPrivateKey;
+    try {
+      // Try to decrypt if it's encrypted
+      const crypto = require('crypto');
+      const encryptionKey = process.env.WALLET_ENCRYPTION_KEY || 'default-encryption-key';
+      const decipher = crypto.createDecipher('aes-256-cbc', encryptionKey);
+      let decrypted = decipher.update(privateKey, 'hex', 'utf8');
+      decrypted += decipher.final('utf8');
+      return decrypted;
+    } catch (decryptError) {
+      // If decryption fails, assume it's already in plain text
+      return agent.hederaPrivateKey;
+    }
+  }
+
+  /**
+   * Get client information
+   * @returns {Object} Client status and info
+   */
+  getClientInfo() {
+    return {
+      isInitialized: clientInitialized,
+      hasClient: !!client,
+      network: 'testnet'
+    };
+  }
+}
+
+// Export singleton instance
+const hederaAgentKitService = new HederaAgentKitService();
+module.exports = hederaAgentKitService;

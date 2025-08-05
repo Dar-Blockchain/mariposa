@@ -20,7 +20,6 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: [true, 'Please add a password'],
     minlength: [6, 'Password must be at least 6 characters'],
     select: false
   },
@@ -29,6 +28,12 @@ const userSchema = new mongoose.Schema({
     enum: ['user', 'admin'],
     default: 'user'
   },
+  userType: {
+    type: String,
+    enum: ['human', 'agent'],
+    default: 'human',
+    required: true
+  },
   isActive: {
     type: Boolean,
     default: true
@@ -36,6 +41,53 @@ const userSchema = new mongoose.Schema({
   avatar: {
     type: String,
     default: null
+  },
+  // Wallet integration
+  walletId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Wallet',
+    default: null
+  },
+  walletAddress: {
+    type: String,
+    default: null,
+    index: true
+  },
+  // Agent integration (if user type is agent)
+  agentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Agent',
+    default: null
+  },
+  // User preferences
+  preferences: {
+    defaultStrategy: {
+      type: String,
+      default: 'DCA'
+    },
+    riskTolerance: {
+      type: String,
+      enum: ['conservative', 'moderate', 'aggressive'],
+      default: 'moderate'
+    },
+    preferredTokens: [{
+      type: String,
+      default: ['WETH', 'WBTC', 'SEI', 'USDC']
+    }],
+    notifications: {
+      email: {
+        type: Boolean,
+        default: true
+      },
+      portfolio: {
+        type: Boolean,
+        default: true
+      },
+      trades: {
+        type: Boolean,
+        default: false
+      }
+    }
   },
   resetPasswordToken: String,
   resetPasswordExpire: Date

@@ -4,10 +4,12 @@ const fetch = require('node-fetch');
 const TOKEN_IDS = {
   'BTC': 'bitcoin',
   'ETH': 'ethereum',
-  'SEI': 'sei-network',
+  'HBAR': 'hedera-hashgraph',
   'USDC': 'usd-coin',
   'USDT': 'tether',
-  'DAI': 'dai'
+  'DAI': 'dai',
+  'LINK': 'chainlink',
+  'MATIC': 'polygon'
 };
 
 // Cache for market data to avoid too many API calls
@@ -19,7 +21,7 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
  * @param {Array} tokens - Array of token symbols (e.g., ['BTC', 'ETH'])
  * @returns {Object} Market data for requested tokens
  */
-async function fetchMarketData(tokens = ['BTC', 'ETH', 'SEI', 'USDC', 'USDT', 'DAI']) {
+async function fetchMarketData(tokens = ['BTC', 'ETH', 'HBAR', 'USDC', 'USDT', 'DAI', 'LINK', 'MATIC']) {
   try {
     // Check cache first
     const cacheKey = tokens.sort().join(',');
@@ -45,7 +47,7 @@ async function fetchMarketData(tokens = ['BTC', 'ETH', 'SEI', 'USDC', 'USDT', 'D
         method: 'GET',
         headers: {
           'Accept': 'application/json',
-          'User-Agent': 'Meraposa-Trading-Bot/1.0'
+          'User-Agent': 'Mariposa-Trading-Bot/1.0'
         },
         timeout: 10000
       }

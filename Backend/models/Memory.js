@@ -12,9 +12,9 @@ const memorySchema = new mongoose.Schema({
     index: true
   },
   agentId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Agent',
-    required: true,
+    type: String, // Changed from ObjectId to String to support UUIDs
+    required: false, // Made optional for agent-chat functionality
+    default: 'agent-chat-system',
     index: true
   },
   userMessage: {
@@ -25,7 +25,7 @@ const memorySchema = new mongoose.Schema({
   extractedParameters: {
     intent: {
       type: String,
-      enum: ['long_holding', 'short_trading', 'mixed']
+      enum: ['long_holding', 'short_trading', 'mixed', 'strategy_declined', 'strategy_modification']
     },
     mentionedCoins: [String],
     riskIndicators: {
@@ -55,19 +55,21 @@ const memorySchema = new mongoose.Schema({
   },
   strategyType: {
     type: String,
-    enum: ['long_holding', 'short_trading', 'mixed'],
-    required: true
+    enum: ['long_holding', 'short_trading', 'mixed', 'chat_conversation'],
+    required: false, // Made optional for agent-chat functionality
+    default: 'chat_conversation'
   },
   budgetAmount: {
     type: Number, // Total budget in USD
-    required: true
+    required: false, // Made optional for agent-chat functionality
+    default: 0
   },
   // Enhanced actions with more context
   actions: [{
     step: Number,
     actionType: {
       type: String,
-      enum: ['BUY', 'SELL', 'HOLD'],
+      enum: ['BUY', 'SELL', 'HOLD', 'STAKE', 'SWAP', 'FARM', 'LEND', 'BORROW', 'BRIDGE', 'MINT', 'BURN'],
       required: true
     },
     percentage: String, // Stores percentages like "40%"
@@ -106,12 +108,47 @@ const memorySchema = new mongoose.Schema({
   },
   summary: {
     type: String,
-    required: true
+    required: false, // Made optional for agent-chat functionality
+    default: 'Agent chat conversation'
   },
   outcome: {
     type: String,
     enum: ['pending', 'executed', 'cancelled', 'modified'],
     default: 'pending'
+  },
+  // Agent Chat specific fields
+  aiResponse: {
+    type: String, // The final AI response to the user
+    default: null
+  },
+  demandType: {
+    type: String,
+    enum: ['ACTION', 'STRATEGY', 'INFORMATION', 'FEEDBACK'],
+    default: null
+  },
+  demandReason: {
+    type: String, // Reason for the demand classification
+    default: null
+  },
+  actionPlan: [{
+    action: String,
+    description: String
+  }],
+  actionResults: [{
+    action: String,
+    description: String,
+    result: {
+      status: String,
+      data: String
+    }
+  }],
+  metadata: {
+    userContext: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {}
+    },
+    timestamp: Date,
+    responseTime: Number
   },
   createdAt: {
     type: Date,
