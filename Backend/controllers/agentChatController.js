@@ -53,9 +53,11 @@ const classifyDemand = async (userMessage) => {
   const classificationPrompt = `You are a demand classifier for a cryptocurrency trading assistant. Analyze the user's message and classify it into one of these 4 categories:
 
 1. "action" - User wants to perform trading actions (buy, sell, transfer, stake, swap, send, etc.)
-2. "strategy" - User wants investment strategy advice or portfolio recommendations
-3. "information" - User wants market data, price info, explanations, or general crypto information
+2. "strategy" - User wants to CREATE a specific trading strategy, portfolio plan, or investment framework (e.g., "create a DCA strategy", "build me a portfolio", "I need an investment plan")
+3. "information" - User wants market data, price info, explanations, investment opinions, opportunity analysis, or general crypto information (e.g., "is X a good investment?", "should I buy Y?", "what's the price of Z?")
 4. "feedback" - User is providing feedback about trades, asking for performance evaluation, or seeking validation
+
+Key distinction: Questions about investment opportunities, market timing, or investment opinions are "information" requests, not "strategy" creation requests.
 
 Respond with ONLY the category name (action/strategy/information/feedback) and a brief 1-sentence explanation.
 

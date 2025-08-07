@@ -4,6 +4,7 @@ const simpleHederaAgentController = require('../controllers/simpleHederaAgentCon
 
 // Routes for /api/agents/hedera
 router.get('/', simpleHederaAgentController.getAllAgents);
+router.get('/user/:userId', simpleHederaAgentController.getAgentsByUserId);
 router.get('/:id', simpleHederaAgentController.getAgentById);
 router.get('/:id/balance', simpleHederaAgentController.getAgentBalance);
 router.post('/', simpleHederaAgentController.createAgent);

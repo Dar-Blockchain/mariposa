@@ -119,8 +119,9 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Complete onboarding error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return NextResponse.json(
-      { message: 'Failed to complete onboarding', error: error.message },
+      { message: 'Failed to complete onboarding', error: errorMessage },
       { status: 500 }
     );
   }
@@ -225,4 +226,4 @@ async function sendWelcomeEmail(userData: any) {
   console.log(`Welcome email sent to ${userData.email}`);
   
   // In production, use your email service
-} 
+}

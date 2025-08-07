@@ -7,7 +7,19 @@ const Agent = require('../models/Agent');
  */
 exports.getAllAgents = async (req, res) => {
   try {
-    const agents = await Agent.getAllAgents();
+    const { userId } = req.query;
+    let agents;
+    
+    if (userId) {
+      // Get agents for a specific user
+      agents = await Agent.find({ userId })
+        .sort({ createdAt: -1 })
+        .select('-__v -hederaPrivateKey')
+        .populate('userId', 'name email');
+    } else {
+      // Get all agents
+      agents = await Agent.getAllAgents();
+    }
     
     res.json({
       success: true,
@@ -61,7 +73,7 @@ exports.getAgentById = async (req, res) => {
  */
 exports.createAgent = async (req, res) => {
   try {
-    const { name, description, hederaAccountId, hederaPrivateKey, hederaPublicKey } = req.body;
+    const { name, description, hederaAccountId, hederaPrivateKey, hederaPublicKey, userId } = req.body;
     
     // Validate required fields
     if (!name) {
@@ -71,9 +83,17 @@ exports.createAgent = async (req, res) => {
       });
     }
     
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please provide a userId for the agent'
+      });
+    }
+    
     const agent = new Agent({
       name,
       description,
+      userId,
       hederaAccountId,
       hederaPrivateKey,
       hederaPublicKey
@@ -86,6 +106,7 @@ exports.createAgent = async (req, res) => {
       _id: agent._id,
       name: agent.name,
       description: agent.description,
+      userId: agent.userId,
       hederaAccountId: agent.hederaAccountId,
       hederaPublicKey: agent.hederaPublicKey,
       createdAt: agent.createdAt,
@@ -140,6 +161,7 @@ exports.updateAgent = async (req, res) => {
       _id: agent._id,
       name: agent.name,
       description: agent.description,
+      userId: agent.userId,
       hederaAccountId: agent.hederaAccountId,
       hederaPublicKey: agent.hederaPublicKey,
       createdAt: agent.createdAt,
@@ -184,6 +206,74 @@ exports.deleteAgent = async (req, res) => {
     });
   } catch (error) {
     console.error('Error deleting agent:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Server Error',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Get agents by user ID
+ * @route GET /api/agents/hedera/user/:userId
+ * @access Public
+ */
+exports.getAgentsByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Handle both ObjectId and email for userId
+    const User = require('../models/User');
+    let actualUserId;
+    
+    // Check if userId is an email (contains @) or ObjectId
+    if (userId.includes('@')) {
+      // Find user by email
+      const user = await User.findOne({ email: userId });
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+      actualUserId = user._id;
+    } else {
+      // Find user by ObjectId
+      try {
+        const user = await User.findById(userId);
+        if (!user) {
+          return res.status(404).json({
+            success: false,
+            message: 'User not found'
+          });
+        }
+        actualUserId = user._id;
+      } catch (error) {
+        // If ObjectId is invalid, try finding by email as fallback
+        const user = await User.findOne({ email: userId });
+        if (!user) {
+          return res.status(404).json({
+            success: false,
+            message: 'User not found'
+          });
+        }
+        actualUserId = user._id;
+      }
+    }
+    
+    const agents = await Agent.find({ userId: actualUserId })
+      .sort({ createdAt: -1 })
+      .select('-__v -hederaPrivateKey')
+      .populate('userId', 'name email');
+    
+    res.json({
+      success: true,
+      count: agents.length,
+      data: agents
+    });
+  } catch (error) {
+    console.error('Error fetching agents by user ID:', error);
     res.status(500).json({
       success: false,
       error: 'Server Error',

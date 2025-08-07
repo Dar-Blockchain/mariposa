@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components/auth/AuthWrapper';
+import { useSelector } from 'react-redux';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -29,9 +30,9 @@ import {
 
 export default function MainDashboard() {
   const { user, logout } = useAuth();
+  const wallet = useSelector((state: any) => state.auth.wallet);
   
-  // Get wallet info from user data
-  const wallet = user?.wallet || {};
+  // Use wallet from auth state
   const hbarBalance = wallet?.balance?.native || 30; // Default to 30 HBAR
   const hbarPrice = 0.065; // Approximate HBAR price in USD
   const portfolioValueUSD = hbarBalance * hbarPrice;
@@ -122,10 +123,10 @@ export default function MainDashboard() {
               <h1 className="text-2xl font-bold text-gray-900">Portfolio Dashboard</h1>
               <p className="text-gray-600">Track your crypto investments and manage your portfolio</p>
             </div>
-                         <Link href="/agent/default">
-               <Button className="bg-purple-600 hover:bg-purple-700 text-white">
-                 <Plus className="w-4 h-4 mr-2" />
-                 Create Agent
+             <Link href="/agent/master">
+               <Button className="bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-semibold">
+                 <Bot className="w-4 h-4 mr-2" />
+                 Master Agent
                </Button>
              </Link>
           </div>
@@ -245,4 +246,4 @@ export default function MainDashboard() {
       </div>
     </div>
   );
-} 
+}

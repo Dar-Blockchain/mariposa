@@ -9,8 +9,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Mail, Shield, ArrowRight } from 'lucide-react';
 
 interface AuthPageProps {
-  onAuthSuccess: (userData: any) => void;
-  onNeedsOnboarding: (email: string) => void;
+  onAuthSuccess: (userData: any, redirectUrl?: string) => void;
+  onNeedsOnboarding: (email: string, redirectUrl?: string) => void;
 }
 
 export default function AuthPage({ onAuthSuccess, onNeedsOnboarding }: AuthPageProps) {
@@ -78,10 +78,10 @@ export default function AuthPage({ onAuthSuccess, onNeedsOnboarding }: AuthPageP
       if (response.ok) {
         if (data.isNewUser) {
           // First time user - needs wallet onboarding
-          onNeedsOnboarding(email);
+          onNeedsOnboarding(email, data.redirectUrl);
         } else {
           // Existing user - proceed to app
-          onAuthSuccess(data.user);
+          onAuthSuccess(data.user, data.redirectUrl);
         }
       } else {
         setError(data.message || 'Invalid verification code');
@@ -209,4 +209,4 @@ export default function AuthPage({ onAuthSuccess, onNeedsOnboarding }: AuthPageP
       </Card>
     </div>
   );
-} 
+}

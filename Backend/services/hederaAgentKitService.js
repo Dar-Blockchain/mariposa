@@ -70,7 +70,7 @@ class HederaAgentKitService {
    * @returns {Object} Agent and toolkit instance
    */
   async createAgentToolkit(agentId) {
-    const agent = await AgentModel.findById(agentId).select('+hederaPrivateKey');
+    const agent = await AgentModel.findOne({hederaAccountId:agentId}).select('+hederaPrivateKey');
     if (!agent) {
       throw new Error('Agent not found');
     }
@@ -106,7 +106,7 @@ class HederaAgentKitService {
         hederaPrivateKey = PrivateKey.fromStringECDSA(privateKey);
       }
     }
-    
+    console.log(agent.hederaAccountId, hederaPrivateKey,"..........")
     // Set operator with the successfully parsed private key
     agentClient.setOperator(agent.hederaAccountId, hederaPrivateKey);
 
@@ -137,7 +137,7 @@ class HederaAgentKitService {
       },
     });
 
-    return { agent, toolkit: agentToolkit };
+    return { agent, toolkit: agentToolkit, client: agentClient };
   }
 
   /**
@@ -157,7 +157,7 @@ class HederaAgentKitService {
 
       // Create agent-specific toolkit
       const { toolkit: agentToolkit } = await this.createAgentToolkit(agentId);
-
+      
       // Get the tools from the agent's toolkit
       const tools = agentToolkit.getTools();
       const createTokenTool = tools.find(tool => tool.name === 'create_fungible_token_tool');
@@ -837,27 +837,41 @@ class HederaAgentKitService {
   }
 
   /**
-   * Transfer tokens between accounts
-   * @param {Object} params - Token transfer parameters
+   * Transfer tokens or HBAR between accounts
+   * @param {Object} params - Transfer parameters
+   * @param {string} params.fromAgentId - Source agent ID
+   * @param {string} params.toAccountId - Destination account ID
+   * @param {string|null} params.tokenId - Token ID (null for HBAR transfers)
+   * @param {number} params.amount - Amount to transfer
+   * @param {string} [params.memo] - Optional memo
    * @returns {Object} Transfer result
    */
   async transferToken({ fromAgentId, toAccountId, tokenId, amount, memo }) {
     try {
-      if (!fromAgentId || !toAccountId || !tokenId || !amount) {
-        throw new Error("Agent ID, recipient account ID, token ID, and amount are required");
+      console.log(fromAgentId ,toAccountId ,tokenId , amount)
+      if (!fromAgentId || !toAccountId || !amount) {
+        throw new Error("Agent ID, recipient account ID, and amount are required");
       }
 
       // Get agent and create toolkit
-      const { agent, toolkit: agentToolkit } = await this.createAgentToolkit(fromAgentId);
+      const { agent, toolkit: agentToolkit, client: agentClient } = await this.createAgentToolkit(fromAgentId);
       
-      // Get agent's client
-      const agentClient = agentToolkit.client;
+      console.log('Agent client status:', agentClient ? 'Defined' : 'Undefined');
       
-      // Create token transfer transaction
-      const transferTx = new TokenTransferTransaction()
-        .addTokenTransfer(tokenId, agent.hederaAccountId, -amount)
-        .addTokenTransfer(tokenId, toAccountId, amount);
-      
+      // Create transfer transaction (HBAR or token)
+      let transferTx;
+      if (tokenId === null || tokenId === undefined) {
+        // HBAR transfer
+        transferTx = new TransferTransaction()
+          .addHbarTransfer(agent.hederaAccountId, new Hbar(-amount))
+          .addHbarTransfer(toAccountId, new Hbar(amount));
+      } else {
+        // Token transfer
+        transferTx = new TokenTransferTransaction()
+          .addTokenTransfer(tokenId, agent.hederaAccountId, -amount)
+          .addTokenTransfer(tokenId, toAccountId, amount);
+      }
+      console.log(agentClient)
       // Add memo if provided
       if (memo) {
         transferTx.setTransactionMemo(memo);
@@ -887,7 +901,11 @@ class HederaAgentKitService {
       const txResponse = await signedTx.execute(agentClient);
       const receipt = await txResponse.getReceipt(agentClient);
       
-      console.log(`✅ Token transfer completed: ${amount} ${tokenId} to ${toAccountId}`);
+      if (tokenId === null || tokenId === undefined) {
+        console.log(`✅ HBAR transfer completed: ${amount} HBAR to ${toAccountId}`);
+      } else {
+        console.log(`✅ Token transfer completed: ${amount} ${tokenId} to ${toAccountId}`);
+      }
       
       return {
         success: true,

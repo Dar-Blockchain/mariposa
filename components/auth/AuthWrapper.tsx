@@ -34,6 +34,16 @@ export default function AuthWrapper({ children }: AuthWrapperProps) {
     }
   }, [isAuthenticated, user, token]);
 
+  // Default redirect to dashboard after authentication is complete
+  // This will only trigger if no specific redirectUrl was provided in the callbacks
+  useEffect(() => {
+    if (authPageState === 'authenticated' && !isLoading) {
+      // We'll let the specific handlers handle redirects with their redirectUrl parameter
+      // This is a fallback for when no redirectUrl is provided
+      router.push('/dashboard');
+    }
+  }, [authPageState, isLoading, router]);
+
   const checkAuthStatus = async () => {
     try {
       dispatch(loginStart());
@@ -48,7 +58,15 @@ export default function AuthWrapper({ children }: AuthWrapperProps) {
       
       dispatch(loginSuccess({
         user: userData.user,
-        wallet: userData.wallet || {} as any,
+        wallet: userData.wallet || {
+          id: '',
+          address: '',
+          accountId: '',
+          network: '',
+          walletClass: 'trading',
+          balance: {},
+          isActive: true
+        },
         token: storedToken
       }));
       setAuthPageState('authenticated');
@@ -60,22 +78,35 @@ export default function AuthWrapper({ children }: AuthWrapperProps) {
     }
   };
 
-  const handleAuthSuccess = (userData: any) => {
+  const handleAuthSuccess = (userData: any, redirectUrl?: string) => {
     if (userData.isNewUser) {
       // New user - create agent with the userId
-      handleCreateAgent(userData.user);
+      handleCreateAgent(userData.user, redirectUrl);
     } else {
       // Existing user - just login
       dispatch(loginSuccess({
         user: userData.user || userData,
-        wallet: userData.wallet || {},
+        wallet: userData.wallet || {
+          id: '',
+          address: '',
+          accountId: '',
+          network: '',
+          walletClass: 'trading',
+          balance: {},
+          isActive: true
+        },
         token: userData.token
       }));
       setAuthPageState('authenticated');
+      
+      // If redirectUrl is provided, use it instead of the default dashboard redirect
+      if (redirectUrl) {
+        router.push(redirectUrl);
+      }
     }
   };
 
-  const handleCreateAgent = async (user: any) => {
+  const handleCreateAgent = async (user: any, redirectUrl?: string) => {
     try {
       console.log('🚀 Creating Hedera agent for user:', user.id);
       
@@ -89,17 +120,30 @@ export default function AuthWrapper({ children }: AuthWrapperProps) {
       
       dispatch(loginSuccess({
         user: user,
-        wallet: agentData.wallet || {},
+        wallet: agentData.wallet || {
+          id: '',
+          address: '',
+          accountId: '',
+          network: '',
+          walletClass: 'trading',
+          balance: {},
+          isActive: true
+        },
         token: user.token
       }));
       setAuthPageState('authenticated');
+      
+      // If redirectUrl is provided, use it instead of the default dashboard redirect
+      if (redirectUrl) {
+        router.push(redirectUrl);
+      }
     } catch (error) {
       console.error('Failed to create agent:', error);
       setAuthPageState('login'); // Fall back to login page with error
     }
   };
 
-  const handleNeedsOnboarding = async (email: string) => {
+  const handleNeedsOnboarding = async (email: string, redirectUrl?: string) => {
     // Simplified flow: create user and agent directly
     try {
       console.log('🚀 Creating new user and agent for:', email);
@@ -113,10 +157,23 @@ export default function AuthWrapper({ children }: AuthWrapperProps) {
       
       dispatch(loginSuccess({
         user: userData.user,
-        wallet: userData.wallet || {},
+        wallet: userData.wallet || {
+          id: '',
+          address: '',
+          accountId: '',
+          network: '',
+          walletClass: 'trading',
+          balance: {},
+          isActive: true
+        },
         token: userData.token
       }));
       setAuthPageState('authenticated');
+      
+      // If redirectUrl is provided, use it instead of the default dashboard redirect
+      if (redirectUrl) {
+        router.push(redirectUrl);
+      }
     } catch (error) {
       console.error('Failed to create user and agent:', error);
       // Fall back to login page with error
@@ -187,4 +244,4 @@ export const useAuth = () => {
     throw new Error('useAuth must be used within AuthWrapper');
   }
   return context;
-}; 
+};

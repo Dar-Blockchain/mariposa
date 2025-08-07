@@ -56,6 +56,31 @@ export interface CreateUserWithAgentResponse {
   message: string;
 }
 
+export interface CreateUserWithHederaWalletRequest {
+  name: string;
+  email: string;
+  userType?: 'human' | 'agent';
+  password?: string;
+  preferences?: any;
+  initialBalance?: number;
+}
+
+export interface CreateUserWithHederaWalletResponse {
+  success: boolean;
+  data: {
+    user: User;
+    wallet: Wallet;
+    hedera: {
+      accountId: string;
+      transactionId: string;
+      initialBalance: number;
+      network: string;
+    };
+    token?: string;
+  };
+  message: string;
+}
+
 export class AuthService {
   static async registerWithWallet(data: RegisterWithWalletRequest): Promise<RegisterWithWalletResponse> {
     try {
@@ -74,6 +99,27 @@ export class AuthService {
       return result;
     } catch (error) {
       console.error('Registration error:', error);
+      throw error;
+    }
+  }
+
+  static async createUserWithHederaWallet(data: CreateUserWithHederaWalletRequest): Promise<CreateUserWithHederaWalletResponse> {
+    try {
+      const response = await fetch(API_ENDPOINTS.CREATE_WITH_HEDERA_WALLET, {
+        method: 'POST',
+        ...DEFAULT_FETCH_OPTIONS,
+        body: JSON.stringify(data),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || 'User creation with Hedera wallet failed');
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Hedera wallet user creation error:', error);
       throw error;
     }
   }
@@ -160,27 +206,14 @@ export class AuthService {
 
   static async createUserWithAgent(data: CreateUserWithAgentRequest): Promise<CreateUserWithAgentResponse> {
     try {
-      // Create agent directly with the input format you provided
-      const agentResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/agents/hedera`, {
+      // Create agent using the simple endpoint with Hedera wallet
+      const agentResponse = await fetch(API_ENDPOINTS.AGENTS_SIMPLE, {
         method: 'POST',
         ...DEFAULT_FETCH_OPTIONS,
         body: JSON.stringify({
           name: data.agentName || `${data.name} Agent`,
           userId: data.userId || data.email, // Use real userId if provided, fallback to email
-          agentType: "actions",
-          configuration: {
-            supportedActions: [
-              "transfer",
-              "swap", 
-              "stake"
-            ],
-            executionMode: "guided",
-            maxTransactionValue: 500,
-            confirmationRequired: true
-          },
-          hederaOptions: {
-            initialBalance: 30
-          }
+          initialBalance: 30 // Initial HBAR balance for the wallet
         }),
       });
 
@@ -216,14 +249,19 @@ export class AuthService {
         user: user,
         agent: agentResult.data.agent,
         wallet: {
-          accountId: agentResult.data.hedera.accountId,
-          address: agentResult.data.hedera.accountId,
-          network: agentResult.data.hedera.network,
-          balance: { native: agentResult.data.hedera.initialBalance },
-          isActive: true
+          accountId: agentResult.data.wallet?.accountId,
+          address: agentResult.data.wallet?.accountId,
+          network: agentResult.data.wallet?.network || 'testnet',
+          balance: { native: agentResult.data.wallet?.initialBalance || 0 },
+          isActive: agentResult.data.wallet?.enabled || false,
+          id: '',
+          walletClass: ''
+
         },
         token: token,
-        message: 'Agent created successfully with Hedera wallet'
+        message: agentResult.data.wallet?.enabled 
+          ? 'Agent created successfully with Hedera wallet'
+          : 'Agent created successfully, but wallet creation failed'
       };
     } catch (error) {
       console.error('Create agent error:', error);
@@ -232,4 +270,4 @@ export class AuthService {
   }
 }
 
-export default AuthService; 
+export default AuthService;

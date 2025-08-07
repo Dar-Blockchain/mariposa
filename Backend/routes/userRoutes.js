@@ -8,6 +8,7 @@ const {
   updateUser,
   deleteUser,
   registerUserWithWallet,
+  createUserWithHederaWallet,
   getUserWithWallet,
   getUserByEmail
 } = require('../controllers/userController');
@@ -483,6 +484,18 @@ router.post('/register-with-wallet', [
   body('preferences').optional().isObject().withMessage('Preferences must be an object if provided')
 ], registerUserWithWallet);
 
+// @desc    Create user with auto-generated Hedera wallet
+// @route   POST /api/users/create-with-hedera-wallet
+// @access  Public
+router.post('/create-with-hedera-wallet', [
+  body('name').notEmpty().withMessage('Name is required'),
+  body('email').isEmail().withMessage('Please provide a valid email'),
+  body('userType').optional().isIn(['human', 'agent']).withMessage('User type must be human or agent'),
+  body('password').optional().isLength({ min: 6 }).withMessage('Password must be at least 6 characters if provided'),
+  body('preferences').optional().isObject().withMessage('Preferences must be an object if provided'),
+  body('initialBalance').optional().isNumeric().withMessage('Initial balance must be a number')
+], createUserWithHederaWallet);
+
 /**
  * @swagger
  * /api/users/{id}/wallet:
@@ -540,4 +553,4 @@ router.get('/:id/wallet', getUserWithWallet);
 // @access  Public
 router.get('/by-email/:email', getUserByEmail);
 
-module.exports = router; 
+module.exports = router;

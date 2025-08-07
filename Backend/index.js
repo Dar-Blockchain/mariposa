@@ -18,6 +18,7 @@ const agentRoutes = require('./routes/agentRoutes');
 const walletRoutes = require('./routes/walletRoutes');
 const agentChatRoutes = require('./routes/agentChatRoutes');
 const simpleHederaAgentRoutes = require('./routes/simpleHederaAgents');
+const authRoutes = require('./routes/authRoutes');
 
 // Initialize Express app
 const app = express();
@@ -45,9 +46,10 @@ app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/agent', aiAgentRoutes);
 app.use('/api/agents', agentRoutes);
-app.use('/api/agents/hedera', simpleHederaAgentRoutes);
+// app.use('/api/agents/hedera', simpleHederaAgentRoutes); // Disabled - no longer used in client pipeline
 app.use('/api/wallets', walletRoutes);
 app.use('/api/agent-chat', agentChatRoutes);
+app.use('/api/auth', authRoutes);
 
 // Swagger documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
@@ -119,4 +121,4 @@ app.listen(PORT, () => {
   console.log(`❤️  Health check available at http://localhost:${PORT}/health`);
 });
 
-module.exports = app; 
+module.exports = app;

@@ -32,7 +32,7 @@ const createAgent = async (req, res) => {
     } = req.body;
 
     // Check if agent name already exists for this user
-    const existingAgent = await Agent.findOne({ name, userId, isActive: true });
+    const existingAgent = await Agent.findOne({ name, userId: actualUserId, isActive: true });
     if (existingAgent) {
       return res.status(400).json({
         success: false,
@@ -182,8 +182,36 @@ const createSimpleAgent = async (req, res) => {
 
     console.log(`🚀 Creating simple agent: ${name} for user: ${userId}`);
 
+    // Verify user exists - handle both ObjectId and email
+    const User = require('../models/User');
+    let existingUser;
+    
+    // Check if userId is an email (contains @) or ObjectId
+    if (userId.includes('@')) {
+      // Find user by email
+      existingUser = await User.findOne({ email: userId });
+    } else {
+      // Find user by ObjectId
+      try {
+        existingUser = await User.findById(userId);
+      } catch (error) {
+        // If ObjectId is invalid, try finding by email as fallback
+        existingUser = await User.findOne({ email: userId });
+      }
+    }
+    
+    if (!existingUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found. Please create user first.'
+      });
+    }
+    
+    // Use the actual user ObjectId for further operations
+    const actualUserId = existingUser._id;
+
     // Check if agent name already exists for this user
-    const existingAgent = await Agent.findOne({ name, userId, isActive: true });
+    const existingAgent = await Agent.findOne({ name, userId: actualUserId, isActive: true });
     if (existingAgent) {
       return res.status(400).json({
         success: false,
@@ -195,7 +223,7 @@ const createSimpleAgent = async (req, res) => {
     const agentData = {
       name,
       description: `Simple AI agent for blockchain operations`,
-      userId,
+      userId: actualUserId,
       agentUuid: uuidv4(),
       agentType: 'general',
       primaryStrategy: null,
@@ -325,15 +353,33 @@ const createAgentWithHedera = async (req, res) => {
       });
     }
 
-    // Verify user exists
+    // Verify user exists - handle both ObjectId and email
     const User = require('../models/User');
-    const existingUser = await User.findById(userId);
+    let existingUser;
+    
+    // Check if userId is an email (contains @) or ObjectId
+    if (userId.includes('@')) {
+      // Find user by email
+      existingUser = await User.findOne({ email: userId });
+    } else {
+      // Find user by ObjectId
+      try {
+        existingUser = await User.findById(userId);
+      } catch (error) {
+        // If ObjectId is invalid, try finding by email as fallback
+        existingUser = await User.findOne({ email: userId });
+      }
+    }
+    
     if (!existingUser) {
       return res.status(404).json({
         success: false,
         message: 'User not found. Please create user first.'
       });
     }
+    
+    // Use the actual user ObjectId for further operations
+    const actualUserId = existingUser._id;
 
     // Check if agent name already exists for this user
     const existingAgent = await Agent.findOne({ name, userId, isActive: true });
@@ -351,7 +397,7 @@ const createAgentWithHedera = async (req, res) => {
     const agentData = {
       name,
       description: description || agentTypeConfig.description,
-      userId,
+      userId: actualUserId,
       agentUuid: uuidv4(),
       agentType,
       primaryStrategy: agentType === 'strategy' ? primaryStrategy : null,
@@ -423,7 +469,8 @@ const createAgentWithHedera = async (req, res) => {
     let userData = null;
     let authToken = null;
     try {
-      const foundUser = await User.findById(userId).select('-password');
+      // Use the existing user we already found and validated
+      const foundUser = existingUser;
       if (foundUser) {
         userData = foundUser;
         // Generate JWT token
@@ -493,7 +540,46 @@ const getUserAgents = async (req, res) => {
     const { userId } = req.params;
     const { strategy, active } = req.query;
 
-    let filter = { userId };
+    // Handle both ObjectId and email for userId
+    const User = require('../models/User');
+    let actualUserId;
+    
+    // Check if userId is an email (contains @) or ObjectId
+    if (userId.includes('@')) {
+      // Find user by email
+      const user = await User.findOne({ email: userId });
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+      actualUserId = user._id;
+    } else {
+      // Find user by ObjectId
+      try {
+        const user = await User.findById(userId);
+        if (!user) {
+          return res.status(404).json({
+            success: false,
+            message: 'User not found'
+          });
+        }
+        actualUserId = user._id;
+      } catch (error) {
+        // If ObjectId is invalid, try finding by email as fallback
+        const user = await User.findOne({ email: userId });
+        if (!user) {
+          return res.status(404).json({
+            success: false,
+            message: 'User not found'
+          });
+        }
+        actualUserId = user._id;
+      }
+    }
+
+    let filter = { userId: actualUserId };
     if (strategy) filter.primaryStrategy = strategy;
     if (active !== undefined) filter.isActive = active === 'true';
 
@@ -3073,4 +3159,4 @@ module.exports = {
   modifyAgentStrategy,
   approveAgent,
   getAgentStrategiesHistory
-}; 
+};

@@ -13,10 +13,10 @@ export interface User {
 export interface Wallet {
   id: string;
   address: string;
+  accountId:string;
   network: string;
   walletClass: string;
   balance: Record<string, any>;
-  portfolioValue: Record<string, any>;
   isActive: boolean;
 }
 

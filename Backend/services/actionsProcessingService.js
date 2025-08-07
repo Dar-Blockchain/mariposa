@@ -1,5 +1,6 @@
 const Together = require('together-ai').default;
 const hederaAgentKitService = require('./hederaAgentKitService');
+const Agent = require('../models/Agent');
 
 // Initialize Together AI for actions processing
 let together;
@@ -21,23 +22,39 @@ class ActionsProcessingService {
   }
 
   /**
-   * Second Layer: Process actions message with specialized LLM
+   * Second Layer: Process actions message with specialized LLM and user messaging
    * @param {string} message - User's message
    * @param {Object} classification - Classification result from first layer
    * @param {Object} options - Processing options
-   * @returns {Object} Processed action result
+   * @returns {Object} Processed action result with user messaging
    */
   async processAction(message, classification, options = {}) {
+    const { execute = false, agentId } = options;
+    
+    // Generate immediate user response
+    const userMessage = this.generateActionMessage(message, classification, execute);
+    
     if (!together) {
-      throw new Error('Together AI not initialized');
+      return {
+        userMessage,
+        actionPlan: this.generateBasicActionPlan(message, classification),
+        status: 'planned',
+        executed: false,
+        error: 'AI not available - basic action plan generated'
+      };
     }
 
     try {
+      console.log('⚡ Processing action with AI analysis...');
+      console.log('📝 Action message:', message);
+      console.log('🏷️ Action type:', classification.actionSubtype);
+      console.log('🔄 Execute mode:', execute);
+      
       const actionSubtype = classification.actionSubtype || 'other';
-      const actionPrompt = this.buildActionPrompt(message, actionSubtype);
+      const actionPrompt = this.buildActionPrompt(message, actionSubtype, execute);
       
       const response = await together.chat.completions.create({
-        model: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo', // Larger model for complex actions
+        model: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
         messages: [
           {
             role: 'system',
@@ -94,12 +111,70 @@ class ActionsProcessingService {
   }
 
   /**
+   * Generate immediate user message for action processing
+   * @param {string} message - User message
+   * @param {Object} classification - Classification result
+   * @param {boolean} execute - Whether to execute the action
+   * @returns {string} User-friendly message
+   */
+  generateActionMessage(message, classification, execute) {
+    const actionType = classification.actionSubtype || 'action';
+    const actionVerbs = {
+      transfer: 'transferring',
+      swap: 'swapping',
+      stake: 'staking',
+      lend: 'lending',
+      borrow: 'borrowing',
+      buy: 'purchasing',
+      sell: 'selling',
+      bridge: 'bridging',
+      mint: 'minting',
+      burn: 'burning',
+      other: 'processing'
+    };
+    
+    const verb = actionVerbs[actionType] || 'processing';
+    
+    if (execute) {
+      return `🚀 I'm ${verb} your request right now! Let me handle the transaction for you...`;
+    } else {
+      return `📋 I understand you want to ${actionType}. Let me analyze your request and prepare the transaction details for you.`;
+    }
+  }
+
+  /**
+   * Generate basic action plan when AI is not available
+   * @param {string} message - User message
+   * @param {Object} classification - Classification result
+   * @returns {Object} Basic action plan
+   */
+  generateBasicActionPlan(message, classification) {
+    const actionType = classification.actionSubtype || 'other';
+    
+    return {
+      action: actionType,
+      message: `Basic ${actionType} plan generated`,
+      steps: [
+        'Validate transaction parameters',
+        'Check account balance and permissions',
+        'Prepare transaction',
+        'Execute transaction',
+        'Confirm completion'
+      ],
+      requirements: ['Valid token addresses', 'Sufficient balance', 'Network connection'],
+      estimatedTime: '30-60 seconds',
+      confidence: 'medium'
+    };
+  }
+
+  /**
    * Build specialized action prompt based on action subtype
    * @param {string} message - User's message
    * @param {string} actionSubtype - Type of action
+   * @param {boolean} execute - Whether to execute the action
    * @returns {Object} System and user prompts
    */
-  buildActionPrompt(message, actionSubtype) {
+  buildActionPrompt(message, actionSubtype, execute = false) {
     const baseSystem = `You are a specialized crypto DeFi actions expert. Your job is to analyze user requests and provide detailed actionable instructions for blockchain operations on the SEI network.
 
 IMPORTANT CONTEXT:
@@ -122,19 +197,37 @@ Key considerations:
 - Suggest transaction confirmation steps
 - Warn about irreversible nature
 
-Response format:
+Response format (METRICS-FOCUSED):
 {
   "actionType": "transfer",
-  "fromToken": "token_symbol",
-  "amount": "numeric_value_or_percentage",
-  "recipient": "address_or_description",
-  "estimatedGasFee": "fee_estimate",
-  "steps": ["step1", "step2", "step3"],
-  "warnings": ["warning1", "warning2"],
-  "prerequisites": ["requirement1", "requirement2"],
-  "estimatedTime": "time_estimate",
-  "riskLevel": "low|medium|high",
-  "recommendations": ["recommendation1", "recommendation2"]
+  "status": "ready|pending|executing|completed|failed",
+  "userMessage": "Brief friendly message about the action",
+  "transaction": {
+    "fromToken": "HBAR",
+    "amount": 50.00,
+    "recipient": "0.0.12345",
+    "estimatedGasFee": 0.001,
+    "estimatedTime": 3,
+    "riskScore": 25,
+    "confidence": 95
+  },
+  "validation": {
+    "balanceCheck": true,
+    "addressValid": true,
+    "networkStatus": "online",
+    "estimatedSuccess": 98
+  },
+  "execution": {
+    "steps": ["Validate", "Sign", "Submit", "Confirm"],
+    "currentStep": 1,
+    "progress": 25,
+    "timeRemaining": 45
+  },
+  "alerts": [
+    "Fee: 0.001 HBAR (~$0.00006)",
+    "Time: ~3 seconds",
+    "Success rate: 98%"
+  ]
 }`,
 
       swap: `SWAP SPECIALIST:
@@ -493,30 +586,17 @@ Response format:
       
       let transferResult;
       
-      if (details.isHbarTransfer) {
-        // Execute evaluation topic creation instead of HBAR transfer
-        transferResult = await hederaAgentKitService.createEvaluationTopic({
-          company: details.company || 'Default Company',
-          postId: details.postId || 'default-post-' + Date.now(),
-          candidateName: details.candidateName || details.recipient || 'Unknown Candidate',
-          candidateId: details.candidateId || 'candidate-' + Date.now(),
-          agentId: agentId
-        });
-      } else {
-        // Execute token transfer
-        if (!details.tokenId) {
-          throw new Error(`Token ID not found for currency: ${details.currency}`);
-        }
+        let agentid_ =await Agent.findById(agentId)
         
         transferResult = await hederaAgentKitService.transferToken({
-          fromAgentId: agentId,
+          fromAgentId: agentid_.hederaAccountId,
           toAccountId: resolvedRecipient,
           tokenId: details.tokenId,
           amount: details.amount,
           memo: details.memo || `${details.currency} transfer from ${parseResult.fromAgent.name}`
         });
-      }
       
+      console.log(transferResult)
       console.log('✅ Action executed successfully!');
       
       return {

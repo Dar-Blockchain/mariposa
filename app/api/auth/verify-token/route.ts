@@ -52,18 +52,20 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Token verification error:', error);
     
-    if (error.name === 'JsonWebTokenError') {
-      return NextResponse.json(
-        { message: 'Invalid token' },
-        { status: 401 }
-      );
-    }
-    
-    if (error.name === 'TokenExpiredError') {
-      return NextResponse.json(
-        { message: 'Token expired' },
-        { status: 401 }
-      );
+    if (error instanceof Error) {
+      if (error.name === 'JsonWebTokenError') {
+        return NextResponse.json(
+          { message: 'Invalid token' },
+          { status: 401 }
+        );
+      }
+      
+      if (error.name === 'TokenExpiredError') {
+        return NextResponse.json(
+          { message: 'Token expired' },
+          { status: 401 }
+        );
+      }
     }
 
     return NextResponse.json(
@@ -84,10 +86,11 @@ async function getUserById(userId: string) {
   */
   
   // For this demo, search through our mock store
-  for (const [email, user] of userStore.entries()) {
+  const users = Array.from(userStore.entries());
+  for (const [email, user] of users) {
     if (user.id === userId) {
       return user;
     }
   }
   return null;
-} 
+}

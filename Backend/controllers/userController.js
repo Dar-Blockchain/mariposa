@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const hederaWalletService = require('../services/hederaWalletService');
 
 // Helper function to generate JWT token
 const generateToken = (id) => {
@@ -220,6 +221,178 @@ const deleteUser = async (req, res) => {
 // @desc    Register user with wallet
 // @route   POST /api/users/register-with-wallet
 // @access  Public
+// New function to create user with auto-generated Hedera wallet
+const createUserWithHederaWallet = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        errors: errors.array()
+      });
+    }
+
+    const { 
+      name, 
+      email, 
+      userType = 'human',
+      password = null,
+      preferences = {},
+      initialBalance = 10 // HBAR
+    } = req.body;
+
+    console.log('\n👤 CREATING USER WITH AUTO-GENERATED HEDERA WALLET');
+    console.log('═'.repeat(60));
+    console.log('📧 Email:', email);
+    console.log('👤 Name:', name);
+    console.log('🔗 User Type:', userType);
+    console.log('💰 Initial Balance:', initialBalance, 'HBAR');
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'User with this email already exists'
+      });
+    }
+
+    console.log('✅ USER VALIDATION PASSED');
+
+    // Create Hedera account
+    console.log('🔄 Creating Hedera account...');
+    const hederaAccount = await hederaWalletService.createNewAccount({
+      initialBalance,
+      memo: `Account for ${name} (${email})`
+    });
+
+    console.log('✅ HEDERA ACCOUNT CREATED');
+    console.log('🆔 Account ID:', hederaAccount.accountId);
+    console.log('💰 Initial Balance:', hederaAccount.initialBalance, 'HBAR');
+
+    // Create user data
+    const userData = {
+      name,
+      email,
+      userType,
+      walletAddress: hederaAccount.accountId, // Use Hedera account ID as wallet address
+      preferences: preferences && Object.keys(preferences).length > 0 ? {
+        defaultStrategy: preferences.defaultStrategy || 'DCA',
+        riskTolerance: preferences.riskTolerance || 'moderate',
+        preferredTokens: preferences.preferredTokens || ['HBAR', 'USDC', 'WETH'],
+        notifications: {
+          email: preferences.notifications?.email !== false,
+          portfolio: preferences.notifications?.portfolio !== false,
+          trades: preferences.notifications?.trades || false
+        }
+      } : {
+        defaultStrategy: 'DCA',
+        riskTolerance: 'moderate',
+        preferredTokens: ['HBAR', 'USDC', 'WETH'],
+        notifications: {
+          email: true,
+          portfolio: true,
+          trades: false
+        }
+      }
+    };
+
+    // Password is optional for all users
+    if (password && password.length >= 6) {
+      userData.password = password;
+    }
+
+    const user = new User(userData);
+    const savedUser = await user.save();
+
+    console.log('✅ USER CREATED');
+    console.log('🆔 User ID:', savedUser._id);
+
+    // Create wallet for the user with Hedera credentials
+    const walletData = {
+      address: hederaAccount.accountId,
+      privateKey: hederaAccount.privateKey,
+      publicKey: hederaAccount.publicKey,
+      network: 'hedera-testnet',
+      walletClass: 'hedera'
+    };
+
+    const wallet = Wallet.createForUser(
+      savedUser._id,
+      savedUser.name,
+      walletData,
+      hederaAccount.initialBalance // Initial balance in HBAR
+    );
+
+    const savedWallet = await wallet.save();
+
+    console.log('✅ HEDERA WALLET CREATED AND ENCRYPTED');
+    console.log('🆔 Wallet ID:', savedWallet._id);
+    console.log('📱 Wallet Address:', savedWallet.walletAddress);
+
+    // Update user with wallet information
+    savedUser.walletId = savedWallet._id;
+    savedUser.walletAddress = savedWallet.walletAddress;
+    await savedUser.save();
+
+    console.log('✅ USER-WALLET LINK ESTABLISHED');
+
+    // Generate token for human users
+    let token = null;
+    if (userType === 'human') {
+      token = generateToken(savedUser._id);
+    }
+
+    console.log('🎉 USER REGISTRATION WITH HEDERA WALLET COMPLETED');
+    console.log('═'.repeat(60));
+
+    const responseData = {
+      user: {
+        id: savedUser._id,
+        name: savedUser.name,
+        email: savedUser.email,
+        userType: savedUser.userType,
+        walletAddress: savedUser.walletAddress,
+        walletId: savedUser.walletId,
+        createdAt: savedUser.createdAt
+      },
+      wallet: {
+        id: savedWallet._id,
+        address: savedWallet.walletAddress,
+        network: savedWallet.network,
+        walletClass: savedWallet.walletClass,
+        balance: { hbar: savedWallet.balance },
+        portfolioValue: savedWallet.portfolioValue,
+        isActive: savedWallet.isActive
+      },
+      hedera: {
+        accountId: hederaAccount.accountId,
+        transactionId: hederaAccount.transactionId,
+        initialBalance: hederaAccount.initialBalance,
+        network: process.env.HEDERA_NETWORK || 'testnet'
+      }
+    };
+
+    if (token) {
+      responseData.token = token;
+    }
+
+    res.status(201).json({
+      success: true,
+      data: responseData,
+      message: `${userType === 'human' ? 'User' : 'Agent'} registered successfully with Hedera wallet`
+    });
+
+  } catch (error) {
+    console.error('❌ USER-HEDERA-WALLET REGISTRATION ERROR:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to register user with Hedera wallet',
+      error: error.message
+    });
+  }
+};
+
 const registerUserWithWallet = async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -240,7 +413,15 @@ const registerUserWithWallet = async (req, res) => {
       preferences = {} 
     } = req.body;
 
-    console.log('\n👤 REGISTERING USER WITH WALLET');
+    // If no wallet credentials provided, create with auto-generated Hedera wallet
+    if (!walletAddress || !privateKey || 
+        walletAddress === '0x0000000000000000000000000000000000000000' ||
+        privateKey === '0x0000000000000000000000000000000000000000000000000000000000000000') {
+      console.log('🔄 No valid wallet credentials provided, creating Hedera wallet...');
+      return createUserWithHederaWallet(req, res);
+    }
+
+    console.log('\n👤 REGISTERING USER WITH PROVIDED WALLET');
     console.log('═'.repeat(60));
     console.log('📧 Email:', email);
     console.log('👤 Name:', name);
@@ -491,6 +672,7 @@ module.exports = {
   updateUser,
   deleteUser,
   registerUserWithWallet,
+  createUserWithHederaWallet,
   getUserWithWallet,
   getUserByEmail
-}; 
+};

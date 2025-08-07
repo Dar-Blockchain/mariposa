@@ -97,6 +97,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         message: 'Login successful',
         isNewUser: false,
+        redirectUrl: '/dashboard',
         user: {
           id: existingUser._id,
           name: existingUser.name,
@@ -110,7 +111,7 @@ export async function POST(request: NextRequest) {
       try {
         console.log(`📧 Creating new user for email: ${email}`);
         
-        const createUserResponse = await fetch(`${BACKEND_URL}/api/users/register-with-wallet`, {
+        const createUserResponse = await fetch(`${BACKEND_URL}/api/users/create-with-hedera-wallet`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -118,9 +119,8 @@ export async function POST(request: NextRequest) {
           body: JSON.stringify({
             name: email.split('@')[0], // Use email prefix as name
             email: email,
-            walletAddress: '0x0000000000000000000000000000000000000000', // Placeholder
-            privateKey: '0x0000000000000000000000000000000000000000000000000000000000000000', // Placeholder
-            userType: 'human'
+            userType: 'human',
+            initialBalance: 10 // 10 HBAR initial balance
           }),
         });
 
@@ -134,6 +134,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({
             message: 'User created successfully',
             isNewUser: true,
+            redirectUrl: '/dashboard',
             user: {
               id: userResult.data.user._id,
               name: userResult.data.user.name,
@@ -184,4 +185,4 @@ async function checkUserExists(email: string) {
     console.error('Error checking user existence:', error);
     return null;
   }
-} 
+}

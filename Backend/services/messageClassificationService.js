@@ -63,17 +63,23 @@ class MessageClassificationService {
   buildClassificationPrompt(message) {
     const system = `You are a message classifier for a crypto trading platform. Your job is to analyze user messages and classify them into exactly one of these 4 categories:
 
-1. **strategy**: User wants investment/trading strategies to make money
-   - Examples: "How can I make money with memecoins?", "What's the best DCA strategy?", "I want to invest in altcoins"
+1. **strategy**: User wants to CREATE or BUILD a specific trading strategy, portfolio plan, or investment framework
+   - Examples: "Create a DCA strategy for me", "Build me a portfolio plan", "Design an investment strategy", "Help me create a trading plan"
+   - Key: User is asking to CREATE something new
 
 2. **actions**: User wants to perform specific blockchain actions
    - Examples: "Swap my ETH for BTC", "Transfer 100 USDC to my friend", "Stake my SEI tokens", "Lend my USDT"
+   - Key: User wants to DO something specific
 
-3. **information**: User asking for market data, analysis, or educational content
-   - Examples: "Is Bitcoin good for trading now?", "What's the current price of ETH?", "How does staking work?"
+3. **information**: User asking for market data, analysis, opinions on existing opportunities, or educational content
+   - Examples: "Is Bitcoin a good investment now?", "What's the current price of ETH?", "Should I buy this token?", "How does staking work?", "Is this a good time to invest?"
+   - Key: User is asking ABOUT something existing, not creating new strategies
 
 4. **feedbacks**: User completed an action/strategy and wants recommendations or feedback
    - Examples: "I just bought BTC, what should I do next?", "I made this trade, was it good?", "I lost money, what went wrong?"
+   - Key: User is asking for feedback on completed actions
+
+IMPORTANT: Questions asking "Should I invest?", "Is X a good buy?", "What's your opinion on Y?" are INFORMATION requests, not strategy creation.
 
 Respond with a JSON object containing:
 {
@@ -156,16 +162,17 @@ Respond with a JSON object containing:
       'buy', 'sell', 'trade', 'exchange', 'mint', 'burn', 'deposit', 'withdraw'
     ];
 
-    // Strategy keywords
+    // Strategy creation keywords (user wants to CREATE something)
     const strategyKeywords = [
-      'make money', 'profit', 'invest', 'strategy', 'dca', 'portfolio',
-      'memecoin', 'altcoin', 'trading plan', 'investment'
+      'create', 'build', 'design', 'make me', 'help me create', 'develop',
+      'set up', 'construct', 'formulate', 'plan for me'
     ];
 
-    // Information keywords
+    // Information keywords (user is asking ABOUT something)
     const infoKeywords = [
       'price', 'chart', 'analysis', 'how does', 'what is', 'explain',
-      'current', 'market', 'news', 'update'
+      'current', 'market', 'news', 'update', 'should i', 'is it good',
+      'worth investing', 'opinion on', 'thoughts on', 'recommend'
     ];
 
     // Feedback keywords
@@ -187,12 +194,25 @@ Respond with a JSON object containing:
       };
     }
 
-    // Check for strategy keywords
+    // Check for information keywords or question marks (prioritize over strategy)
+    if (infoKeywords.some(keyword => lowerMessage.includes(keyword)) || message.includes('?')) {
+      return {
+        type: 'information',
+        confidence: 0.8,
+        reasoning: 'Detected information request or question',
+        keywords: this.extractKeywords(message),
+        actionSubtype: null,
+        originalMessage: message,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    // Check for strategy keywords (creation-focused)
     if (strategyKeywords.some(keyword => lowerMessage.includes(keyword))) {
       return {
         type: 'strategy',
-        confidence: 0.8,
-        reasoning: 'Detected strategy keywords in message',
+        confidence: 0.7,
+        reasoning: 'Detected strategy creation keywords in message',
         keywords: this.extractKeywords(message),
         actionSubtype: null,
         originalMessage: message,
@@ -206,19 +226,6 @@ Respond with a JSON object containing:
         type: 'feedbacks',
         confidence: 0.8,
         reasoning: 'Detected feedback keywords in message',
-        keywords: this.extractKeywords(message),
-        actionSubtype: null,
-        originalMessage: message,
-        timestamp: new Date().toISOString()
-      };
-    }
-
-    // Check for information keywords or question marks
-    if (infoKeywords.some(keyword => lowerMessage.includes(keyword)) || message.includes('?')) {
-      return {
-        type: 'information',
-        confidence: 0.7,
-        reasoning: 'Detected information request or question',
         keywords: this.extractKeywords(message),
         actionSubtype: null,
         originalMessage: message,
@@ -249,11 +256,14 @@ Respond with a JSON object containing:
     if (['swap', 'transfer', 'send', 'stake', 'lend'].some(word => lowerMessage.includes(word))) {
       return 'actions';
     }
-    if (['strategy', 'invest', 'make money'].some(word => lowerMessage.includes(word))) {
+    if (['create', 'build', 'design', 'make me', 'help me create'].some(word => lowerMessage.includes(word))) {
       return 'strategy';
     }
     if (['just', 'completed', 'made'].some(word => lowerMessage.includes(word))) {
       return 'feedbacks';
+    }
+    if (['should i', 'is it good', 'worth investing', 'opinion on', 'price', 'analysis'].some(word => lowerMessage.includes(word))) {
+      return 'information';
     }
     
     return 'information';

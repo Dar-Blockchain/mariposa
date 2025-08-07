@@ -19,6 +19,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/components/auth/AuthWrapper';
 
 interface AgentCreationModalProps {
   isOpen: boolean;
@@ -88,6 +89,12 @@ export default function AgentCreationModal({ isOpen, onClose, onSelectAgent }: A
   const [error, setError] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<PreconfiguredAgent | null>(null);
   const router = useRouter();
+  const { user } = useAuth();
+
+  // Function to get user ID from auth context
+  const getUserId = () => {
+    return user?.id || null;
+  };
 
   // Load preconfigured agents
   useEffect(() => {
@@ -177,10 +184,19 @@ export default function AgentCreationModal({ isOpen, onClose, onSelectAgent }: A
       const uniqueName = `${agent.name} #${uniqueId}`;
 
       // Ensure all required fields are present and properly formatted
+      // Get userId from auth context
+      const userId = getUserId(); // This should come from your auth system
+      
+      if (!userId) {
+        setError('User not authenticated. Please log in first.');
+        setIsCreating(false);
+        return;
+      }
+
       const agentConfig: AgentConfig = {
         name: uniqueName,
         description: agent.description,
-        userId: "user123", // This should come from your auth system
+        userId: userId,
         primaryStrategy: agent.strategy,
         configuration: {
           defaultBudget: agent.configuration.defaultBudget,
@@ -198,7 +214,7 @@ export default function AgentCreationModal({ isOpen, onClose, onSelectAgent }: A
         console.log('Agent created successfully:', result.data);
         onSelectAgent(agent.id, uniqueName);
         onClose();
-        router.push(`/agent/${result.data.id || result.data._id}`);
+        router.push('/dashboard');
       } else {
         console.error('Agent creation failed:', result.error);
         setError(result.error || 'Failed to create agent');
