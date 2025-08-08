@@ -80,6 +80,10 @@ const config: Config = {
           '50%': { opacity: '1' },
           '100%': { opacity: '0.2' },
         },
+        'pop-in': {
+          '0%': { opacity: '0', transform: 'scale(0.98) translateY(6px)' },
+          '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
+        },
         'accordion-down': {
           from: {
             height: '0',
@@ -102,6 +106,7 @@ const config: Config = {
         'float-slow': 'float 6s ease-in-out infinite',
         shine: 'shine 2s linear infinite',
         'dot': 'dot-pulse 1s ease-in-out infinite',
+        'pop': 'pop-in 300ms ease-out both',
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
       },

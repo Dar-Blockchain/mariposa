@@ -1,21 +1,8 @@
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import type { Metadata } from "next";
-import {
-  ArrowRight,
-  Bot,
-  CheckCircle2,
-  CreditCard,
-  Github,
-  LineChart,
-  Lock,
-  Mail,
-  PlayCircle,
-  Rocket,
-  Shield,
-  Sparkles,
-  Zap,
-} from "lucide-react";
+import { ArrowRight, Bot, CheckCircle2, LineChart, Lock, Mail, PlayCircle, Rocket, Shield, Sparkles, Zap } from "lucide-react";
 
 import TryPrompt from "@/components/landing/TryPrompt";
 import AnimatedSection from "@/components/landing/AnimatedSection";
@@ -24,11 +11,11 @@ import PromptResponse from "@/components/landing/PromptResponse";
 export const metadata: Metadata = {
   title: "Mariposa – The Web3 Wallet Powered by Natural Language",
   description:
-    "Create a secure non-custodial wallet with just your email, then move assets with simple prompts. Natural language, agentic automation, and non-custodial security.",
+    "Hedera-native wallet automation. Create a secure non-custodial wallet with your email, then move HBAR and HTS tokens (USDT, USDC, SAUCE) with simple prompts. Agentic automation on Hedera with low fees and fast finality.",
   openGraph: {
     title: "Mariposa – The Web3 Wallet Powered by Natural Language",
     description:
-      "Create a secure non-custodial wallet with just your email, then move assets with simple prompts.",
+      "Hedera-native wallet automation. Send HBAR, swap on SaucerSwap, and automate strategies with natural language.",
     url: "https://mariposa.app/landing",
     siteName: "Mariposa",
     images: [
@@ -46,7 +33,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Mariposa – The Web3 Wallet Powered by Natural Language",
     description:
-      "Create a secure non-custodial wallet with just your email, then move assets with simple prompts.",
+      "Hedera-native wallet automation. Send HBAR, swap on SaucerSwap, and automate strategies with natural language.",
     images: ["https://mariposa.app/og-image.png"],
   },
 };
@@ -59,6 +46,27 @@ const orangeDivider = "h-px w-full bg-gradient-to-r from-orange-500/20 via-orang
 export default function LandingPage() {
   return (
     <main className="min-h-screen bg-white text-gray-900 dark:bg-neutral-950 dark:text-neutral-100">
+      {/* Header with section links */}
+      <header className="fixed inset-x-0 top-0 z-40 border-b border-orange-100/60 bg-white/70 backdrop-blur dark:border-orange-400/10 dark:bg-neutral-900/60">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
+          <Link href="#hero" className="flex items-center gap-2">
+            <div className="relative h-16 w-16 overflow-hidden rounded-lg ring-1 ring-orange-300/50">
+              <Image src="/images/logo.png" alt="Mariposa" fill sizes="200px" />
+            </div>
+          </Link>
+          <nav className="hidden items-center gap-4 text-sm sm:flex">
+            <Link href="#chat" className={orangeLink}>Chat</Link>
+            <Link href="#how" className={orangeLink}>How it works</Link>
+            <Link href="#automation" className={orangeLink}>Automation</Link>
+            <Link href="#capabilities" className={orangeLink}>What you can do</Link>
+            <Link href="#hedera" className={orangeLink}>Built on Hedera</Link>
+            <Link href="#pricing" className={orangeLink}>Pricing</Link>
+            <Link href="/dashboard" className={`${orangeButton} ml-2 px-4 py-2`}>Launch</Link>
+          </nav>
+        </div>
+      </header>
+      {/* Right rail scroll line */}
+      <div className="pointer-events-none fixed right-4 top-24 bottom-24 hidden w-[2px] bg-gradient-to-b from-orange-200 via-orange-500 to-orange-200 opacity-60 sm:block" />
       {/* Schema.org Product */}
       <script
         type="application/ld+json"
@@ -82,19 +90,20 @@ export default function LandingPage() {
       />
 
       {/* Hero */}
-      <section className="relative overflow-hidden">
+      <section id="hero" className="relative overflow-hidden">
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-orange-500/5 via-transparent to-transparent" />
         <div className="mx-auto max-w-7xl px-6 pt-24 pb-16 sm:pt-28">
           <div className="grid items-center gap-10 md:grid-cols-2">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-orange-200/60 bg-white/60 px-3 py-1 text-xs font-medium text-orange-700 shadow-sm backdrop-blur dark:border-orange-400/20 dark:bg-white/5">
-                <Sparkles className="h-3.5 w-3.5" /> AI + Non‑Custodial
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white">M</span>
+                Mariposa • Built on Hedera
               </div>
               <h1 className="mt-4 text-4xl font-extrabold tracking-tight sm:text-5xl">
                 Mariposa: The Web3 Wallet Powered by Natural Language
               </h1>
               <p className="mt-4 text-lg text-gray-600 dark:text-neutral-300">
-                Create a secure non‑custodial wallet with just your email, then move assets with simple prompts.
+                Hedera‑native, non‑custodial wallet automation. Send HBAR and HTS tokens, swap on SaucerSwap, and automate strategies — with simple prompts.
               </p>
               <div className="mt-6 flex flex-wrap items-center gap-3">
                 <Link href="/dashboard" className={orangeButton}>
@@ -115,12 +124,12 @@ export default function LandingPage() {
                 <div className="mb-3 h-2 w-24 rounded-full bg-orange-100 dark:bg-orange-400/30" />
                 <div className="space-y-3">
                   <div className="rounded-xl bg-neutral-50 p-4 shadow-sm ring-1 ring-orange-100/60 dark:bg-neutral-800">
-                    <div className="text-xs text-gray-500">You</div>
-                    <div className="mt-1 text-sm">Send $50 in ETH to Alex</div>
+                  <div className="text-xs text-gray-500">You</div>
+                  <div className="mt-1 text-sm">Send 50 HBAR to Alex</div>
                   </div>
                   <div className="rounded-xl bg-neutral-50 p-4 shadow-sm ring-1 ring-orange-100/60 dark:bg-neutral-800">
                     <div className="text-xs text-gray-500">You</div>
-                    <div className="mt-1 text-sm">Swap USDC for SOL</div>
+                  <div className="mt-1 text-sm">Swap USDC → HBAR</div>
                   </div>
                   <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-orange-100/60 dark:bg-neutral-900">
                     <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -137,7 +146,7 @@ export default function LandingPage() {
       </section>
 
       {/* Problem (animated) */}
-      <AnimatedSection className="mx-auto max-w-7xl px-6 py-16">
+      <AnimatedSection id="problem" className="mx-auto max-w-7xl px-6 py-16">
         <h2 className="text-2xl font-bold">Web3’s Complexity Barrier</h2>
         <p className="mt-2 max-w-3xl text-gray-600 dark:text-neutral-300">
           Web3 adoption is hampered by complex seed phrases, manual and repetitive transactions, and confusing UX.
@@ -161,7 +170,7 @@ export default function LandingPage() {
       </AnimatedSection>
 
       {/* Solution (prompt + response showcase) */}
-      <AnimatedSection className="mx-auto max-w-7xl px-6 pb-16" delay={80}>
+      <AnimatedSection id="chat" className="mx-auto max-w-7xl px-6 pb-16" delay={80}>
         <PromptResponse
           title="Transforming Web3 Interaction"
           subtitle="Why Mariposa? Ask anything. Get secure execution with clarity and speed."
@@ -207,7 +216,7 @@ export default function LandingPage() {
       </AnimatedSection>
 
       {/* How it works (animated cards) */}
-      <AnimatedSection className="mx-auto max-w-7xl px-6 pb-16" delay={120}>
+      <AnimatedSection id="how" className="mx-auto max-w-7xl px-6 pb-16" delay={120}>
         <h2 className="text-2xl font-bold">How it works</h2>
         <div className="mt-6 grid gap-4 sm:grid-cols-2 md:grid-cols-4">
           {[
@@ -246,7 +255,7 @@ export default function LandingPage() {
       </AnimatedSection>
 
       {/* Automation pipelines (chat-like) */}
-      <AnimatedSection className="mx-auto max-w-7xl px-6 pb-16" delay={160}>
+      <AnimatedSection id="automation" className="mx-auto max-w-7xl px-6 pb-16" delay={160}>
         <h2 className="text-2xl font-bold">Automation pipelines (Trigger → Condition → Action)</h2>
         <PromptResponse
           title="Automation in action"
@@ -280,66 +289,29 @@ export default function LandingPage() {
         />
       </AnimatedSection>
 
-      {/* Market & audience */}
-      <section className="mx-auto max-w-7xl px-6 pb-16">
-        <h2 className="text-2xl font-bold">Market & audience</h2>
-        <div className="mt-6 grid gap-6 md:grid-cols-2">
-          <div className="grid gap-4 sm:grid-cols-3">
-            {[{ n: "300M+", d: "crypto users by 2025" }, { n: "80%", d: "abandonment" }, { n: "$50B+", d: "TAM" }].map(
-              ({ n, d }) => (
-                <div key={n} className="rounded-2xl border border-orange-100 bg-white p-6 text-center shadow-sm dark:border-orange-400/20 dark:bg-neutral-900">
-                  <div className="text-3xl font-extrabold text-orange-600">{n}</div>
-                  <div className="mt-1 text-xs text-gray-600 dark:text-neutral-300">{d}</div>
-                </div>
-              )
-            )}
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {["Crypto‑curious", "Passive investors", "Experienced traders"].map((t) => (
-              <div key={t} className="rounded-2xl border border-orange-100 bg-white p-6 shadow-sm dark:border-orange-400/20 dark:bg-neutral-900">
-                <h3 className="font-semibold">{t}</h3>
-                <p className="mt-1 text-sm text-gray-600 dark:text-neutral-300">Tailored guidance and automation suited to your goals.</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* Removed Market & audience per request */}
 
       {/* Comparison table */}
-      <section className="mx-auto max-w-7xl px-6 pb-16">
-        <h2 className="text-2xl font-bold">Why Mariposa wins</h2>
-        <div className="mt-6 overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-sm dark:border-orange-400/20 dark:bg-neutral-900">
-          <table className="w-full text-sm">
-            <thead className="bg-neutral-50 text-left text-gray-600 dark:bg-neutral-800 dark:text-neutral-300">
-              <tr>
-                <th className="p-4">Feature</th>
-                <th className="p-4">Traditional wallets</th>
-                <th className="p-4">Custodial services</th>
-                <th className="p-4 text-orange-600">Mariposa</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-orange-100/60 dark:divide-orange-400/10">
-              {[
-                ["Asset custody", "Self-custody (complex)", "Held by provider", "Non‑custodial (simple)"] as const,
-                ["Setup complexity", "Seed phrases", "Easy but custodial", "Email-based, no seed phrases"],
-                ["Natural language", "No", "Limited", "Yes – end‑to‑end"],
-                ["Strategy automation", "Manual", "Some", "Advanced pipelines"],
-                ["AI integration", "No", "Basic", "Deep: routing + optimization"],
-              ].map((row) => (
-                <tr key={row[0]} className="odd:bg-white even:bg-neutral-50/50 dark:odd:bg-neutral-900 dark:even:bg-neutral-900/60">
-                  <td className="p-4 font-medium">{row[0]}</td>
-                  <td className="p-4">{row[1]}</td>
-                  <td className="p-4">{row[2]}</td>
-                  <td className="p-4 font-semibold text-orange-700">{row[3]}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <section id="capabilities" className="mx-auto max-w-7xl px-6 pb-16">
+        <h2 className="text-2xl font-bold">What you can do on Mariposa</h2>
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          {[
+            { title: 'Send & request', desc: 'Send HBAR, USDC, USDT with prompts. Add memos, saved contacts, and confirmations.' },
+            { title: 'Swap & route', desc: 'Best price routing on SaucerSwap with slippage guard and receipts.' },
+            { title: 'Automate', desc: 'Create rules: triggers, conditions, and actions for repeatable strategies.' },
+          ].map(({ title, desc }) => (
+            <div key={title} className="rounded-2xl border border-orange-100 bg-white p-6 shadow-sm dark:border-orange-400/20 dark:bg-neutral-900">
+              <h3 className="font-semibold">{title}</h3>
+              <p className="mt-1 text-sm text-gray-600 dark:text-neutral-300">{desc}</p>
+            </div>
+          ))}
         </div>
       </section>
 
+      {/* Removed Why we’re the best per request */}
+
       {/* Pricing */}
-      <section className="mx-auto max-w-7xl px-6 pb-16">
+      <section id="pricing" className="mx-auto max-w-7xl px-6 pb-16">
         <h2 className="text-2xl font-bold">Pricing</h2>
         <div className="mt-6 grid gap-6 md:grid-cols-2">
           <div className="rounded-2xl border border-orange-100 bg-white p-6 shadow-sm dark:border-orange-400/20 dark:bg-neutral-900">
@@ -370,58 +342,31 @@ export default function LandingPage() {
       </section>
 
       {/* Go-to-market */}
-      <section className="mx-auto max-w-7xl px-6 pb-16">
-        <h2 className="text-2xl font-bold">Go‑to‑market</h2>
+      <section id="hedera" className="mx-auto max-w-7xl px-6 pb-16">
+        <h2 className="text-2xl font-bold">Built on Hedera</h2>
+        <p className="mt-2 max-w-3xl text-gray-600 dark:text-neutral-300">Fast finality, low fees, and enterprise‑grade security. Mariposa is built for HBAR and Hedera Token Service (USDC, USDT, SAUCE).</p>
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           {[
-            { icon: Github, title: "Community", desc: "Dev events, meetups, workshops" },
-            { icon: CreditCard, title: "Partnerships", desc: "DeFi, NFTs, Web3 apps" },
-            { icon: Sparkles, title: "Education hub", desc: "Guides, docs, tutorials" },
-          ].map(({ icon: Icon, title, desc }) => (
+            { title: "HBAR native", desc: "Send, receive, and automate HBAR with smart safeguards." },
+            { title: "SaucerSwap", desc: "Best‑route swaps and strategy automation for SAUCE and pairs." },
+            { title: "Stablecoins", desc: "USDC/USDT payments and automated sweeps with triggers." },
+          ].map(({ title, desc }) => (
             <div key={title} className="rounded-2xl border border-orange-100 bg-white p-6 shadow-sm dark:border-orange-400/20 dark:bg-neutral-900">
-              <Icon className="h-5 w-5 text-orange-600" />
-              <h3 className="mt-3 font-semibold">{title}</h3>
+              <h3 className="font-semibold">{title}</h3>
               <p className="mt-1 text-sm text-gray-600 dark:text-neutral-300">{desc}</p>
             </div>
           ))}
         </div>
-      </section>
-
-      {/* Roadmap */}
-      <section className="mx-auto max-w-7xl px-6 pb-16">
-        <h2 className="text-2xl font-bold">Roadmap</h2>
-        <div className="mt-6 grid gap-4 md:grid-cols-4">
-          {[
-            { q: "Q1 2024", d: "MVP—email wallet, basic NL commands, major chains." },
-            { q: "Q3 2024", d: "Strategy engine—advanced pipelines, DeFi integrations." },
-            { q: "Q1 2025", d: "AI optimization, cross‑chain automation, enterprise." },
-            { q: "Q3 2025", d: "Developer API, strategy marketplace, mobile‑first." },
-          ].map(({ q, d }) => (
-            <div key={q} className="rounded-2xl border border-orange-100 bg-white p-6 shadow-sm dark:border-orange-400/20 dark:bg-neutral-900">
-              <div className="text-sm font-semibold text-orange-700">{q}</div>
-              <p className="mt-1 text-sm text-gray-600 dark:text-neutral-300">{d}</p>
-            </div>
+        <div className="mt-6 flex flex-wrap items-center gap-2">
+          {['HBAR', 'SAUCE', 'USDC', 'USDT'].map((t) => (
+            <span key={t} className="rounded-full border border-orange-200/60 bg-orange-50 px-3 py-1 text-xs font-medium text-orange-700 dark:border-orange-400/20 dark:bg-orange-400/10 dark:text-orange-300">{t}</span>
           ))}
         </div>
       </section>
 
-      {/* Social proof / growth */}
-      <section className="mx-auto max-w-7xl px-6 pb-16">
-        <h2 className="text-2xl font-bold">Growth trajectory</h2>
-        <div className="mt-6 grid gap-6 md:grid-cols-2">
-          <div className="rounded-2xl border border-orange-100 bg-white p-6 shadow-sm dark:border-orange-400/20 dark:bg-neutral-900">
-            <div className="h-48 w-full rounded-lg bg-gradient-to-tr from-orange-100 via-orange-50 to-white dark:from-orange-900/20 dark:via-neutral-900 dark:to-neutral-900" />
-            <p className="mt-2 text-xs text-gray-500">User/revenue trajectory placeholder chart. Projection only.</p>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {["99.99% uptime", "Fast LCP", "Accessible UI"].map((b) => (
-              <div key={b} className="rounded-2xl border border-orange-100 bg-white p-6 text-center shadow-sm dark:border-orange-400/20 dark:bg-neutral-900">
-                <h3 className="font-semibold">{b}</h3>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* Removed Roadmap per request */}
+
+      {/* Removed Growth trajectory per request */}
 
       {/* Final CTA */}
       <section className="mx-auto max-w-7xl px-6 pb-24">

@@ -79,9 +79,11 @@ export default function PromptResponse({ title, subtitle, items, className = "" 
           {items.map((item, i) => (
             <div
               key={i}
-              className="group relative rounded-2xl border border-orange-100 bg-white/90 p-4 shadow-sm ring-1 ring-orange-100/60 backdrop-blur transition hover:shadow-md dark:border-orange-400/20 dark:bg-neutral-900/80"
+              className="group relative rounded-2xl border border-orange-100 bg-white/90 p-4 shadow-sm ring-1 ring-orange-100/60 backdrop-blur transition hover:shadow-md dark:border-orange-400/20 dark:bg-neutral-900/80 animate-pop"
             >
               <div className="absolute inset-0 -z-10 rounded-2xl bg-[linear-gradient(110deg,rgba(255,255,255,0)_0%,rgba(255,255,255,.6)_40%,rgba(255,255,255,0)_60%)] bg-[length:200%_100%] opacity-0 transition group-hover:opacity-100 animate-shine" />
+              {/* WAW ribbon */}
+              <div className="pointer-events-none absolute -right-2 -top-2 rotate-3 select-none rounded bg-gradient-to-r from-orange-500 to-yellow-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white opacity-0 transition group-hover:opacity-100">Live</div>
 
               <div className="flex items-start gap-3">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow">

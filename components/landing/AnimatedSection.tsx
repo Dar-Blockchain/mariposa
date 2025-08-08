@@ -2,13 +2,13 @@
 
 import React, { useEffect, useRef, useState } from "react";
 
-type AnimatedSectionProps = {
+type AnimatedSectionProps = React.HTMLAttributes<HTMLDivElement> & {
   children: React.ReactNode;
   className?: string;
   delay?: number;
 };
 
-export default function AnimatedSection({ children, className = "", delay = 0 }: AnimatedSectionProps) {
+export default function AnimatedSection({ children, className = "", delay = 0, ...rest }: AnimatedSectionProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [visible, setVisible] = useState(false);
 
@@ -36,6 +36,7 @@ export default function AnimatedSection({ children, className = "", delay = 0 }:
     <div
       ref={ref}
       className={`${className} ${visible ? "animate-fade-in-up" : "opacity-0 translate-y-4"}`}
+      {...rest}
     >
       {children}
     </div>
