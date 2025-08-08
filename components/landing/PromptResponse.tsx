@@ -1,12 +1,13 @@
 "use client";
 
-import React from "react";
-import { Bot, User, ArrowRight, CheckCircle2, Sparkles } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { Bot, User, ArrowRight, CheckCircle2, Sparkles, RefreshCw } from "lucide-react";
 
 type Item = {
   prompt: string;
   response: string;
   pill?: string;
+  details?: string[];
 };
 
 type PromptResponseProps = {
@@ -17,6 +18,48 @@ type PromptResponseProps = {
 };
 
 export default function PromptResponse({ title, subtitle, items, className = "" }: PromptResponseProps) {
+  const [typingIdx, setTypingIdx] = useState<number | null>(null);
+  const [showDetails, setShowDetails] = useState<boolean[]>(() => items.map(() => false));
+  const [typedText, setTypedText] = useState<string[]>(() => items.map(() => ""));
+
+  useEffect(() => {
+    // Sequential typewriter for each agent response
+    let i = 0;
+    let interval: ReturnType<typeof setInterval> | null = null;
+    let timeoutAfterItem: ReturnType<typeof setTimeout> | null = null;
+
+    const typeItem = () => {
+      setTypingIdx(i);
+      const full = items[i].response || "";
+      let pos = 0;
+      interval = setInterval(() => {
+        pos += 1;
+        setTypedText((prev) => {
+          const next = [...prev];
+          next[i] = full.slice(0, pos);
+          return next;
+        });
+        if (pos >= full.length) {
+          if (interval) clearInterval(interval);
+          setTypingIdx(null);
+          timeoutAfterItem = setTimeout(() => {
+            i += 1;
+            if (i < items.length) {
+              typeItem();
+            }
+          }, 400);
+        }
+      }, 16);
+    };
+
+    typeItem();
+
+    return () => {
+      if (interval) clearInterval(interval);
+      if (timeoutAfterItem) clearTimeout(timeoutAfterItem);
+    };
+  }, [items]);
+
   return (
     <section className={`relative ${className}`}>
       <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-orange-500/5 via-transparent to-transparent" />
@@ -60,9 +103,21 @@ export default function PromptResponse({ title, subtitle, items, className = "" 
                   <Bot className="h-4 w-4" />
                 </div>
                 <div className="flex-1">
-                  <div className="text-xs text-gray-500">Mariposa Agent</div>
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <span>Mariposa Agent</span>
+                    {typingIdx === i && (
+                      <span className="inline-flex items-center gap-1 text-orange-600">
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" /> thinking
+                        <span className="inline-flex items-center ml-1">
+                          <span className="mx-0.5 h-1.5 w-1.5 rounded-full bg-orange-400 animate-dot" />
+                          <span className="mx-0.5 h-1.5 w-1.5 rounded-full bg-orange-400 animate-dot [animation-delay:150ms]" />
+                          <span className="mx-0.5 h-1.5 w-1.5 rounded-full bg-orange-400 animate-dot [animation-delay:300ms]" />
+                        </span>
+                      </span>
+                    )}
+                  </div>
                   <div className="mt-1 text-sm leading-relaxed text-gray-800 dark:text-neutral-200">
-                    {item.response}
+                    {typedText[i] || item.response}
                   </div>
                 </div>
                 <ArrowRight className="mt-1 h-4 w-4 text-orange-500 opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100" />
@@ -72,6 +127,27 @@ export default function PromptResponse({ title, subtitle, items, className = "" 
                 <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
                 Executed securely via agent automation
               </div>
+
+              {item.details && item.details.length > 0 && (
+                <div className="mt-3">
+                  <button
+                    onClick={() => setShowDetails((prev) => prev.map((v, idx) => (idx === i ? !v : v)))}
+                    className="text-xs text-orange-700 underline decoration-dotted underline-offset-4 hover:text-orange-800"
+                  >
+                    {showDetails[i] ? 'Hide details' : 'Show details'}
+                  </button>
+                  {showDetails[i] && (
+                    <ul className="mt-2 grid gap-1 text-xs text-gray-600 dark:text-neutral-300">
+                      {item.details.map((d, k) => (
+                        <li key={k} className="flex items-start gap-2">
+                          <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-orange-400" />
+                          <span>{d}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>

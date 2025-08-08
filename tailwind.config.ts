@@ -75,6 +75,11 @@ const config: Config = {
           '0%': { backgroundPosition: '-200% 0' },
           '100%': { backgroundPosition: '200% 0' },
         },
+        'dot-pulse': {
+          '0%': { opacity: '0.2' },
+          '50%': { opacity: '1' },
+          '100%': { opacity: '0.2' },
+        },
         'accordion-down': {
           from: {
             height: '0',
@@ -96,6 +101,7 @@ const config: Config = {
         'fade-in-up': 'fade-in-up 600ms ease-out both',
         'float-slow': 'float 6s ease-in-out infinite',
         shine: 'shine 2s linear infinite',
+        'dot': 'dot-pulse 1s ease-in-out infinite',
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
       },

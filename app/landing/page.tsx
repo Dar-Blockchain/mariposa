@@ -97,7 +97,7 @@ export default function LandingPage() {
                 Create a secure non‑custodial wallet with just your email, then move assets with simple prompts.
               </p>
               <div className="mt-6 flex flex-wrap items-center gap-3">
-                <Link href="/auth" className={orangeButton}>
+                <Link href="/dashboard" className={orangeButton}>
                   Create Your Wallet <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
                 <a href="#demo" className="inline-flex items-center rounded-full px-5 py-3 text-orange-600 ring-1 ring-orange-300 transition hover:bg-orange-50 dark:text-orange-400 dark:ring-orange-400/40">
@@ -164,25 +164,43 @@ export default function LandingPage() {
       <AnimatedSection className="mx-auto max-w-7xl px-6 pb-16" delay={80}>
         <PromptResponse
           title="Transforming Web3 Interaction"
-          subtitle="See how natural language turns into secure actions with agent automation."
+          subtitle="Why Mariposa? Ask anything. Get secure execution with clarity and speed."
           items={[
             {
-              prompt: "Send 25 HBAR to Sarah with memo 'Thanks!'",
+              prompt: "Why Mariposa over other wallets?",
               response:
-                "I'll transfer 25 HBAR to Sarah’s saved address with the memo ‘Thanks!’. Estimated fee: ~0.001 HBAR. You'll receive a confirmation and transaction ID in a moment.",
+                "Mariposa turns natural language into secure, non‑custodial execution. It routes best prices, handles fees and approvals, and keeps you in control.",
+              pill: "Why Mariposa",
+              details: [
+                "Non‑custodial: Your keys, protected by MPC",
+                "Natural language → on‑chain actions",
+                "Best‑route execution & slippage guard",
+                "Receipts, audit trail, and notifications",
+              ],
+            },
+            {
+              prompt: "Show me a quick transfer",
+              response:
+                "I'll transfer 25 HBAR to Sarah’s saved address with memo ‘Thanks!’. Estimated fee: ~0.001 HBAR. You’ll get a confirmation and transaction link.",
               pill: "Transfer",
+              details: [
+                "Recipient: Sarah (0.0.123… masked)",
+                "Network: Hedera mainnet",
+                "Fee estimate: 0.001 HBAR",
+                "Security: Non‑custodial + policy checks",
+              ],
             },
             {
-              prompt: "Swap $50 USDC to HBAR at best price",
+              prompt: "Can you optimize a swap?",
               response:
-                "I've routed your swap across the best available pool with minimal slippage. Estimated receive: ~187.3 HBAR. Executing now and monitoring final settlement.",
+                "I’ll route your $50 USDC → HBAR swap across the best pool. Estimated receive: ~187.3 HBAR with 0.5% slippage tolerance. Executing and monitoring now.",
               pill: "Swap",
-            },
-            {
-              prompt: "When HBAR ↑5%, move $30 USDC → HBAR",
-              response:
-                "Automation set. I'll monitor HBAR price and execute the swap when your trigger is hit, then notify you with the outcome and performance summary.",
-              pill: "Automation",
+              details: [
+                "Router: Best route (multi‑pool)",
+                "Slippage tolerance: 0.5%",
+                "Gas & approvals handled",
+                "Post‑trade report with txn link",
+              ],
             },
           ]}
         />
@@ -239,12 +257,24 @@ export default function LandingPage() {
               response:
                 "Automation scheduled. I'll watch HBAR change and place a market order for ~$20 HBAR when the threshold hits. You'll get a receipt instantly.",
               pill: "Trigger",
+              details: [
+                "Trigger window: 24h price change",
+                "Order type: Market (best execution)",
+                "Safety: Slippage guard & balance checks",
+                "Audit trail with timestamp",
+              ],
             },
             {
               prompt: "If my USDC balance ≥ $500, sweep $50 to BTC weekly",
               response:
                 "Done. A weekly sweep is set with your condition. Every execution will include price, slippage, and a link to the transaction.",
               pill: "Condition",
+              details: [
+                "Schedule: Weekly (Sunday 09:00 UTC)",
+                "Balance gate: USDC ≥ $500",
+                "Execution: Lowest-fee route",
+                "Reporting: Email summary with KPIs",
+              ],
             },
           ]}
         />
