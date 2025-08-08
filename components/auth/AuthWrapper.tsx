@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAppDispatch, useAppSelector } from '@/lib/hooks/redux';
 import { loginStart, loginSuccess, loginFailure, logout as logoutAction } from '@/lib/slices/authSlice';
@@ -22,35 +22,55 @@ export default function AuthWrapper({ children }: AuthWrapperProps) {
   const pathname = usePathname();
   const dispatch = useAppDispatch();
   const { user, isAuthenticated, token, isLoading } = useAppSelector((state) => state.auth);
+  const isVerifyingRef = useRef(false);
 
   useEffect(() => {
+    // Already authenticated
     if (isAuthenticated && user && token) {
-      setAuthPageState('authenticated');
-    } else if (token) {
-      // Try to verify existing token
-      checkAuthStatus();
-    } else {
+      if (authPageState !== 'authenticated') setAuthPageState('authenticated');
+      return;
+    }
+
+    const storedToken = token || (typeof window !== 'undefined' ? localStorage.getItem('mariposa_token') : null);
+
+    // Verify token only once while loading to avoid loops
+    if (storedToken && authPageState === 'loading' && !isVerifyingRef.current) {
+      isVerifyingRef.current = true;
+      checkAuthStatus(storedToken).finally(() => {
+        isVerifyingRef.current = false;
+      });
+      return;
+    }
+
+    // No token → show login
+    if (!storedToken && authPageState !== 'login') {
       setAuthPageState('login');
     }
-  }, [isAuthenticated, user, token]);
+  }, [isAuthenticated, user, token, authPageState]);
 
   // Default redirect to dashboard after authentication is complete
   // This will only trigger if no specific redirectUrl was provided in the callbacks
   useEffect(() => {
     if (authPageState === 'authenticated' && !isLoading) {
-      // We'll let the specific handlers handle redirects with their redirectUrl parameter
-      // This is a fallback for when no redirectUrl is provided
-      router.push('/dashboard');
+      // Only redirect to dashboard if user is on the root path or auth-related paths
+      // Preserve user's current location for valid authenticated routes
+      const validAuthenticatedRoutes = ['/dashboard', '/pipeline', '/trading', '/cards', '/analytics', '/activity', '/agents', '/agent', '/chat'];
+      const isOnValidRoute = validAuthenticatedRoutes.some(route => pathname.startsWith(route));
+      
+      // Only redirect if not already on a valid authenticated route
+      if (!isOnValidRoute || pathname === '/') {
+        router.push('/dashboard');
+      }
     }
-  }, [authPageState, isLoading, router]);
+  }, [authPageState, isLoading, router, pathname]);
 
-  const checkAuthStatus = async () => {
+  const checkAuthStatus = async (providedToken?: string | null) => {
     try {
       dispatch(loginStart());
       
-      const storedToken = localStorage.getItem('mariposa_token') || token;
+      const storedToken = providedToken || token || (typeof window !== 'undefined' ? localStorage.getItem('mariposa_token') : null);
       if (!storedToken) {
-        setAuthPageState('login');
+        if (authPageState !== 'login') setAuthPageState('login');
         return;
       }
 
@@ -60,48 +80,73 @@ export default function AuthWrapper({ children }: AuthWrapperProps) {
         user: userData.user,
         wallet: userData.wallet || {
           id: '',
-          address: '',
-          accountId: '',
-          network: '',
-          walletClass: 'trading',
+          address: userData.user?.walletAddress || '',
+          accountId: userData.user?.walletAddress || '',
+          network: 'hedera-testnet',
+          walletClass: 'hedera',
           balance: {},
           isActive: true
         },
         token: storedToken
       }));
-      setAuthPageState('authenticated');
+      
+      // Ensure token is also in cookies for middleware
+      if (storedToken) {
+        document.cookie = `mariposa_token=${storedToken}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=lax`;
+        console.log('🍪 Token cookie set during auth check:', storedToken.substring(0, 20) + '...');
+      }
+      
+      if (authPageState !== 'authenticated') setAuthPageState('authenticated');
     } catch (error) {
       console.error('Auth check failed:', error);
       localStorage.removeItem('mariposa_token');
+      // Remove cookie as well
+      document.cookie = 'mariposa_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
       dispatch(loginFailure(error instanceof Error ? error.message : 'Auth check failed'));
-      setAuthPageState('login');
+      if (authPageState !== 'login') setAuthPageState('login');
     }
   };
 
   const handleAuthSuccess = (userData: any, redirectUrl?: string) => {
-    if (userData.isNewUser) {
-      // New user - create agent with the userId
-      handleCreateAgent(userData.user, redirectUrl);
+    // The OTP verification now handles user/agent creation automatically
+    // Extract user info from the response
+    const user = userData.user || userData;
+    
+    dispatch(loginSuccess({
+      user: user,
+      wallet: userData.wallet || {
+        id: user.walletId || '',
+        address: user.walletAddress || '',
+        accountId: user.walletAddress || '',
+        network: 'hedera-testnet',
+        walletClass: 'hedera',
+        balance: {},
+        isActive: true
+      },
+      token: user.token
+    }));
+    
+    // Store token in localStorage and cookies
+    if (user.token) {
+      localStorage.setItem('mariposa_token', user.token);
+      // Also set as cookie for middleware access
+      document.cookie = `mariposa_token=${user.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=lax`;
+      console.log('🍪 Token cookie set:', user.token.substring(0, 20) + '...');
+    }
+    
+    setAuthPageState('authenticated');
+    
+    // If redirectUrl is provided, use it instead of the default dashboard redirect
+    if (redirectUrl) {
+      router.push(redirectUrl);
     } else {
-      // Existing user - just login
-      dispatch(loginSuccess({
-        user: userData.user || userData,
-        wallet: userData.wallet || {
-          id: '',
-          address: '',
-          accountId: '',
-          network: '',
-          walletClass: 'trading',
-          balance: {},
-          isActive: true
-        },
-        token: userData.token
-      }));
-      setAuthPageState('authenticated');
+      // Check if user is on a valid authenticated route and preserve it
+      const validAuthenticatedRoutes = ['/dashboard', '/pipeline', '/trading', '/cards', '/analytics', '/activity', '/agents', '/agent', '/chat'];
+      const isOnValidRoute = validAuthenticatedRoutes.some(route => pathname.startsWith(route));
       
-      // If redirectUrl is provided, use it instead of the default dashboard redirect
-      if (redirectUrl) {
-        router.push(redirectUrl);
+      // Only redirect to dashboard if not on a valid route
+      if (!isOnValidRoute || pathname === '/') {
+        router.push('/dashboard');
       }
     }
   };
@@ -144,51 +189,31 @@ export default function AuthWrapper({ children }: AuthWrapperProps) {
   };
 
   const handleNeedsOnboarding = async (email: string, redirectUrl?: string) => {
-    // Simplified flow: create user and agent directly
-    try {
-      console.log('🚀 Creating new user and agent for:', email);
-      
-      // Call the simplified onboarding API
-      const userData = await AuthService.createUserWithAgent({
-        email,
-        name: email.split('@')[0], // Use email prefix as default name
-        agentName: `${email.split('@')[0]} Agent`
-      });
-      
-      dispatch(loginSuccess({
-        user: userData.user,
-        wallet: userData.wallet || {
-          id: '',
-          address: '',
-          accountId: '',
-          network: '',
-          walletClass: 'trading',
-          balance: {},
-          isActive: true
-        },
-        token: userData.token
-      }));
-      setAuthPageState('authenticated');
-      
-      // If redirectUrl is provided, use it instead of the default dashboard redirect
-      if (redirectUrl) {
-        router.push(redirectUrl);
-      }
-    } catch (error) {
-      console.error('Failed to create user and agent:', error);
-      // Fall back to login page with error
-      setAuthPageState('login');
-    }
+    // This function should not be called anymore since OTP verification
+    // now handles user/agent creation automatically. Redirect to auth success.
+    console.log('⚠️ handleNeedsOnboarding called - this should not happen with the new flow');
+    
+    // Create a basic user object for fallback
+    const fallbackUser = {
+      id: email,
+      name: email.split('@')[0],
+      email: email,
+      userType: 'human',
+      token: btoa(`${email}:${Date.now()}`)
+    };
+    
+    handleAuthSuccess({ user: fallbackUser }, redirectUrl);
   };
 
   const handleLogout = () => {
     localStorage.removeItem('mariposa_token');
+    // Remove cookie as well
+    document.cookie = 'mariposa_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     dispatch(logoutAction());
     setAuthPageState('login');
     // Redirect to home if on protected route
-    if (pathname.startsWith('/(authenticated)')) {
-      router.push('/');
-    }
+    const protectedPaths = ['/dashboard','/pipeline','/trading','/cards','/analytics','/activity','/agents','/agent','/chat'];
+    if (protectedPaths.some(p => pathname.startsWith(p))) router.push('/');
   };
 
   const handleBackToLogin = () => {

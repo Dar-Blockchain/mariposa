@@ -182,7 +182,7 @@ const createSimpleAgent = async (req, res) => {
 
     console.log(`🚀 Creating simple agent: ${name} for user: ${userId}`);
 
-    // Verify user exists - handle both ObjectId and email
+    // Verify user exists or create new user - handle both ObjectId and email
     const User = require('../models/User');
     let existingUser;
     
@@ -200,15 +200,30 @@ const createSimpleAgent = async (req, res) => {
       }
     }
     
-    if (!existingUser) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found. Please create user first.'
-      });
-    }
+    let actualUserId;
     
-    // Use the actual user ObjectId for further operations
-    const actualUserId = existingUser._id;
+    if (!existingUser) {
+      // Create user if it doesn't exist
+      console.log(`👤 Creating new user: ${userId}`);
+      
+      const newUserData = {
+        name: userId.includes('@') ? userId.split('@')[0] : userId,
+        email: userId.includes('@') ? userId : `${userId}@example.com`,
+        userType: 'human',
+        isActive: true,
+        createdAt: new Date()
+      };
+      
+      const newUser = new User(newUserData);
+      await newUser.save();
+      actualUserId = newUser._id;
+      
+      console.log(`✅ User created successfully with ID: ${actualUserId}`);
+    } else {
+      // Use the actual user ObjectId for further operations
+      actualUserId = existingUser._id;
+      console.log(`✅ Using existing user with ID: ${actualUserId}`);
+    }
 
     // Check if agent name already exists for this user
     const existingAgent = await Agent.findOne({ name, userId: actualUserId, isActive: true });
@@ -281,6 +296,9 @@ const createSimpleAgent = async (req, res) => {
 
     console.log(`🎉 Simple agent creation completed in ${duration}ms`);
 
+    // Get user information for response
+    const userInfo = existingUser || await User.findById(actualUserId);
+    
     res.status(201).json({
       success: true,
       data: {
@@ -295,6 +313,14 @@ const createSimpleAgent = async (req, res) => {
           hederaPublicKey: finalAgent.hederaPublicKey,
           isActive: finalAgent.isActive,
           createdAt: finalAgent.createdAt
+        },
+        user: {
+          _id: userInfo._id,
+          name: userInfo.name,
+          email: userInfo.email,
+          userType: userInfo.userType,
+          isActive: userInfo.isActive,
+          createdAt: userInfo.createdAt
         },
         wallet: {
           enabled: hederaResult.success || false,
@@ -356,7 +382,7 @@ const createAgentWithHedera = async (req, res) => {
     // Verify user exists - handle both ObjectId and email
     const User = require('../models/User');
     let existingUser;
-    
+    console.log('🔧 User ID:', userId.includes('@'));
     // Check if userId is an email (contains @) or ObjectId
     if (userId.includes('@')) {
       // Find user by email
@@ -382,7 +408,7 @@ const createAgentWithHedera = async (req, res) => {
     const actualUserId = existingUser._id;
 
     // Check if agent name already exists for this user
-    const existingAgent = await Agent.findOne({ name, userId, isActive: true });
+    const existingAgent = await Agent.findOne({ name, userId:actualUserId, isActive: true });
     if (existingAgent) {
       return res.status(400).json({
         success: false,

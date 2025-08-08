@@ -1,9 +1,11 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthWrapper';
 import { useSelector } from 'react-redux';
+import { PriceService } from '@/lib/services/priceService';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -31,11 +33,45 @@ import {
 export default function MainDashboard() {
   const { user, logout } = useAuth();
   const wallet = useSelector((state: any) => state.auth.wallet);
+  const router = useRouter();
+  
+  // State for real-time price data
+  const [hbarPrice, setHbarPrice] = useState(0.065); // Default fallback price
+  const [priceChange24h, setPriceChange24h] = useState(0);
+  const [isLoadingPrice, setIsLoadingPrice] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   
   // Use wallet from auth state
   const hbarBalance = wallet?.balance?.native || 30; // Default to 30 HBAR
-  const hbarPrice = 0.065; // Approximate HBAR price in USD
   const portfolioValueUSD = hbarBalance * hbarPrice;
+  
+  // Fetch real-time HBAR price
+  useEffect(() => {
+    const fetchHBARPrice = async () => {
+      try {
+        setIsLoadingPrice(true);
+        const priceData = await PriceService.getHBARPrice();
+        
+        setHbarPrice(priceData.price);
+        setPriceChange24h(priceData.change24h || 0);
+        setLastUpdated(new Date(priceData.lastUpdated));
+        
+        console.log(`💰 Dashboard updated with HBAR price: $${priceData.price.toFixed(4)}`);
+      } catch (error) {
+        console.error('❌ Failed to fetch HBAR price for dashboard:', error);
+      } finally {
+        setIsLoadingPrice(false);
+      }
+    };
+
+    // Fetch price immediately
+    fetchHBARPrice();
+    
+    // Set up periodic refresh every 2 minutes
+    const interval = setInterval(fetchHBARPrice, 120000);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -66,6 +102,17 @@ export default function MainDashboard() {
               <TrendingUp className="w-5 h-5 mr-3" />
               Trading
             </Link>
+            
+            <button 
+              onClick={() => {
+                console.log('🚀 Navigating to Pipeline...');
+                router.push('/pipeline');
+              }}
+              className="flex items-center px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-colors w-full text-left"
+            >
+              <Bot className="w-5 h-5 mr-3" />
+              Pipeline
+            </button>
             
             <Link href="/cards" className="flex items-center px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-colors">
               <CreditCard className="w-5 h-5 mr-3" />
@@ -123,12 +170,16 @@ export default function MainDashboard() {
               <h1 className="text-2xl font-bold text-gray-900">Portfolio Dashboard</h1>
               <p className="text-gray-600">Track your crypto investments and manage your portfolio</p>
             </div>
-             <Link href="/agent/master">
-               <Button className="bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-semibold">
-                 <Bot className="w-4 h-4 mr-2" />
-                 Master Agent
-               </Button>
-             </Link>
+             <Button 
+               onClick={() => {
+                 console.log('🚀 Navigating to Master Agent...');
+                 router.push('/agent/master');
+               }}
+               className="bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-semibold"
+             >
+               <Bot className="w-4 h-4 mr-2" />
+               Master Agent
+             </Button>
           </div>
         </header>
 
@@ -145,12 +196,35 @@ export default function MainDashboard() {
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-baseline space-x-3">
-                      <p className="text-4xl font-bold">${portfolioValueUSD.toFixed(2)}</p>
+                      <p className="text-4xl font-bold">
+                        {isLoadingPrice ? (
+                          <span className="animate-pulse">$---.--</span>
+                        ) : (
+                          `$${portfolioValueUSD.toFixed(2)}`
+                        )}
+                      </p>
                       <span className="text-lg text-white/80">{hbarBalance} HBAR</span>
                     </div>
-                    <div className="flex items-center text-green-300">
-                      <ArrowUpRight className="w-4 h-4 mr-1" />
-                      <span className="text-sm">Hedera Network • Active</span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center text-green-300">
+                        <ArrowUpRight className="w-4 h-4 mr-1" />
+                        <span className="text-sm">Hedera Network • Active</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm text-white/80">
+                          HBAR: ${PriceService.formatPrice(hbarPrice)}
+                        </div>
+                        <div className={`text-xs flex items-center ${
+                          priceChange24h >= 0 ? 'text-green-300' : 'text-red-300'
+                        }`}>
+                          {priceChange24h >= 0 ? (
+                            <ArrowUpRight className="w-3 h-3 mr-1" />
+                          ) : (
+                            <ArrowDownLeft className="w-3 h-3 mr-1" />
+                          )}
+                          {PriceService.formatPriceChange(priceChange24h).formatted} 24h
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -202,10 +276,21 @@ export default function MainDashboard() {
                       <div className="text-right">
                         <div className="flex items-center space-x-4">
                           <div>
-                            <p className="font-semibold">{hbarBalance}</p>
+                            <p className="font-semibold">{hbarBalance} HBAR</p>
                             <p className="text-sm text-green-600">Active</p>
                           </div>
-                          <p className="font-semibold text-gray-900">${portfolioValueUSD.toFixed(2)}</p>
+                          <div className="text-right">
+                            <p className="font-semibold text-gray-900">
+                              {isLoadingPrice ? (
+                                <span className="animate-pulse">$---.--</span>
+                              ) : (
+                                `$${portfolioValueUSD.toFixed(2)}`
+                              )}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                              ${PriceService.formatPrice(hbarPrice)} per HBAR
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -229,6 +314,12 @@ export default function MainDashboard() {
                               {wallet.isActive ? 'Active' : 'Inactive'}
                             </Badge>
                           </div>
+                          {lastUpdated && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Price Updated:</span>
+                              <span className="text-gray-900">{lastUpdated.toLocaleTimeString()}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

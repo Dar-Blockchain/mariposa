@@ -12,9 +12,63 @@ const TOKEN_IDS = {
   'MATIC': 'polygon'
 };
 
+// GeckoTerminal token addresses for Hedera network
+const HEDERA_TOKEN_IDS = {
+  'HBAR': '0.0.15058', // WHBAR[new] token ID from tokenstestnetSwap.json
+  'USDC': '0.0.5449',  // USDC from tokenstestnetSwap.json
+  'SAUCE': '0.0.1183558' // SAUCE from tokenstestnetSwap.json
+};
+
 // Cache for market data to avoid too many API calls
 const marketDataCache = new Map();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+/**
+ * Fetch HBAR data from GeckoTerminal API
+ * @param {string} tokenAddress - Hedera token address
+ * @returns {Object} Token data from GeckoTerminal
+ */
+async function fetchHederaTokenData(tokenAddress) {
+  try {
+    console.log(`🦎 Fetching HBAR data from GeckoTerminal for ${tokenAddress}...`);
+    
+    const response = await fetch(
+      `https://api.geckoterminal.com/api/v2/networks/hedera-hashgraph/tokens/${tokenAddress}`,
+      {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'HederaMarketService/1.0'
+        },
+        timeout: 10000
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`GeckoTerminal API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.data || !data.data.attributes) {
+      throw new Error('Invalid GeckoTerminal response format');
+    }
+
+    const attributes = data.data.attributes;
+    
+    return {
+      price: parseFloat(attributes.price_usd) || 0,
+      change24h: parseFloat(attributes.price_change_percentage?.h24) || 0,
+      volume24h: parseFloat(attributes.volume_usd?.h24) || 0,
+      marketCap: parseFloat(attributes.market_cap_usd) || 0,
+      lastUpdated: new Date().toISOString(),
+      source: 'GeckoTerminal'
+    };
+  } catch (error) {
+    console.error(`❌ Failed to fetch Hedera token data for ${tokenAddress}:`, error.message);
+    return null;
+  }
+}
 
 /**
  * Fetch live market data for supported tokens
@@ -74,6 +128,22 @@ async function fetchMarketData(tokens = ['BTC', 'ETH', 'HBAR', 'USDC', 'USDT', '
       }
     }
 
+    // Fetch HBAR data from GeckoTerminal if requested
+    if (tokens.includes('HBAR') && HEDERA_TOKEN_IDS['HBAR']) {
+      console.log('🦎 Fetching HBAR data from GeckoTerminal instead of CoinGecko...');
+      const hbarData = await fetchHederaTokenData(HEDERA_TOKEN_IDS['HBAR']);
+      if (hbarData) {
+        marketData['HBAR'] = hbarData;
+        console.log('✅ HBAR data updated from GeckoTerminal:', {
+          price: hbarData.price,
+          marketCap: hbarData.marketCap,
+          change24h: hbarData.change24h
+        });
+      } else {
+        console.warn('⚠️ Failed to fetch HBAR from GeckoTerminal, keeping CoinGecko data if available');
+      }
+    }
+
     // Add market summary and insights
     const marketSummary = generateMarketSummary(marketData);
     
@@ -81,7 +151,7 @@ async function fetchMarketData(tokens = ['BTC', 'ETH', 'HBAR', 'USDC', 'USDT', '
       tokens: marketData,
       summary: marketSummary,
       timestamp: new Date().toISOString(),
-      source: 'CoinGecko API'
+      source: tokens.includes('HBAR') ? 'CoinGecko API + GeckoTerminal (HBAR)' : 'CoinGecko API'
     };
 
     // Cache the result
@@ -256,6 +326,7 @@ function formatMarketDataForAI(marketData) {
 
 module.exports = {
   fetchMarketData,
+  fetchHederaTokenData,
   formatMarketDataForAI,
   generateMarketSummary
 }; 

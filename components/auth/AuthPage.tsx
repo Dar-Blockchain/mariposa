@@ -76,12 +76,11 @@ export default function AuthPage({ onAuthSuccess, onNeedsOnboarding }: AuthPageP
       const data = await response.json();
 
       if (response.ok) {
-        if (data.isNewUser) {
-          // First time user - needs wallet onboarding
-          onNeedsOnboarding(email, data.redirectUrl);
-        } else {
-          // Existing user - proceed to app
+        // Prefer unified flow: if backend returns user, proceed directly
+        if (data.user) {
           onAuthSuccess(data.user, data.redirectUrl);
+        } else if (data.isNewUser) {
+          onNeedsOnboarding(email, data.redirectUrl);
         }
       } else {
         setError(data.message || 'Invalid verification code');

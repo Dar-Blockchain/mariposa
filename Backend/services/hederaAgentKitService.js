@@ -65,12 +65,47 @@ const {
 
 class HederaAgentKitService {
   /**
+   * Helper method to determine if ID is Hedera account ID or MongoDB ObjectID
+   * @param {string} id - The ID to check
+   * @returns {boolean} True if Hedera account ID, false if ObjectID
+   */
+  isHederaAccountId(id) {
+    // Hedera account ID pattern: 0.0.xxxxxx
+    return /^0\.0\.\d+$/.test(id);
+  }
+
+  /**
+   * Find agent by ID (supports both Hedera account ID and MongoDB ObjectID)
+   * @param {string} agentId - The agent's ID
+   * @param {boolean} selectPrivateKey - Whether to select private key field
+   * @returns {Object} Agent document
+   */
+  async findAgentById(agentId, selectPrivateKey = false) {
+    let query;
+    
+    if (this.isHederaAccountId(agentId)) {
+      // Use Hedera account ID
+      query = AgentModel.findOne({ hederaAccountId: agentId });
+    } else {
+      // Use MongoDB ObjectID
+      query = AgentModel.findById(agentId);
+    }
+    
+    if (selectPrivateKey) {
+      query = query.select('+hederaPrivateKey');
+    }
+    
+    return await query;
+  }
+
+  /**
    * Helper function to create agent-specific Hedera toolkit
-   * @param {string} agentId - Agent MongoDB ObjectId
+   * @param {string} agentId - Agent ID (Hedera account ID or MongoDB ObjectID)
    * @returns {Object} Agent and toolkit instance
    */
   async createAgentToolkit(agentId) {
-    const agent = await AgentModel.findOne({hederaAccountId:agentId}).select('+hederaPrivateKey');
+    console.log(agentId,"..........")
+    const agent = await this.findAgentById(agentId, true);
     if (!agent) {
       throw new Error('Agent not found');
     }
@@ -933,11 +968,12 @@ class HederaAgentKitService {
    */
   async parseTransferRequest(message, agentId) {
     try {
-      // Simple regex-based parsing for now (can be enhanced with LLM later)
+      // TODO: Replace with LLM-based parsing for better accuracy
+      console.warn('⚠️ Hedera Agent Kit Service still uses regex parsing. Consider upgrading to LLM-based parsing.');
       const parseResult = this.extractTransferDetails(message);
       
       // Validate the agent exists
-      const agent = await AgentModel.findById(agentId);
+      const agent = await this.findAgentById(agentId);
       if (!agent) {
         throw new Error('Agent not found');
       }

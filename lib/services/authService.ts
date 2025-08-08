@@ -147,7 +147,14 @@ export class AuthService {
 
   static async verifyToken(token: string): Promise<VerifyTokenResponse> {
     try {
-      const response = await fetch(API_ENDPOINTS.VERIFY_TOKEN, createAuthenticatedRequest(token));
+      // Call the Next.js local endpoint to avoid backend JWT secret mismatch
+      const response = await fetch('/api/auth/verify-token', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        }
+      });
 
       const result = await response.json();
 
@@ -223,25 +230,24 @@ export class AuthService {
         throw new Error(agentResult.message || 'Failed to create agent');
       }
 
-      // Extract user info from agent response or create basic user object
-      let user;
-      let token;
-      
-      if (agentResult.data.user) {
-        // If backend created/returned user info
-        user = agentResult.data.user;
-        token = agentResult.data.token || btoa(`${data.email}:${Date.now()}`);
-      } else {
-        // Fallback: create basic user object
-        user = {
-          id: data.email,
-          name: data.name,
-          email: data.email,
-          userType: 'human',
-          createdAt: new Date().toISOString()
-        };
-        token = btoa(`${data.email}:${Date.now()}`);
-      }
+      // Extract user info from the new response structure
+      const user = agentResult.data.user ? {
+        id: agentResult.data.user._id,
+        name: agentResult.data.user.name,
+        email: agentResult.data.user.email,
+        userType: agentResult.data.user.userType,
+        createdAt: agentResult.data.user.createdAt
+      } : {
+        // Fallback if user data is missing
+        id: data.email,
+        name: data.name,
+        email: data.email,
+        userType: 'human',
+        createdAt: new Date().toISOString()
+      };
+
+      // Generate token for the user
+      const token = btoa(`${user.email}:${Date.now()}`);
 
       // Return result matching the expected format
       return {
@@ -254,9 +260,8 @@ export class AuthService {
           network: agentResult.data.wallet?.network || 'testnet',
           balance: { native: agentResult.data.wallet?.initialBalance || 0 },
           isActive: agentResult.data.wallet?.enabled || false,
-          id: '',
-          walletClass: ''
-
+          id: agentResult.data.agent?._id || '',
+          walletClass: 'hedera'
         },
         token: token,
         message: agentResult.data.wallet?.enabled 

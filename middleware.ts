@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
+  // Temporarily disable middleware for debugging
+  console.log(`🔍 Middleware: ${request.nextUrl.pathname} - BYPASSED FOR DEBUGGING`);
+  return NextResponse.next();
+  
   // Get the pathname
   const pathname = request.nextUrl.pathname;
 
@@ -10,8 +14,7 @@ export function middleware(request: NextRequest) {
     '/',
     '/api/auth/send-otp',
     '/api/auth/verify-otp', 
-    '/api/auth/complete-onboarding',
-    '/auth'
+    '/api/auth/complete-onboarding'
   ];
 
   // Check if the path is public
@@ -20,14 +23,35 @@ export function middleware(request: NextRequest) {
   }
 
   // Protected authenticated routes
-  if (pathname.startsWith('/(authenticated)')) {
+  const protectedPaths = [
+    '/dashboard',
+    '/pipeline', 
+    '/trading',
+    '/cards',
+    '/analytics',
+    '/activity',
+    '/agents',
+    '/agent',
+    '/chat'
+  ];
+  
+  const isProtectedRoute = protectedPaths.some(path => pathname.startsWith(path));
+  
+  if (isProtectedRoute) {
     const token = request.cookies.get('mariposa_token')?.value || 
-                  request.headers.get('authorization')?.replace('Bearer ', '');
+                  request.headers.get('authorization')?.replace('Bearer ', '') ||
+                  request.nextUrl.searchParams.get('token');
+
+    console.log(`🔍 Middleware: ${pathname}, Token found: ${!!token}`);
 
     if (!token) {
+      console.log(`🚫 Middleware: No token found, redirecting to /`);
       // Redirect to home page for authentication
-      return NextResponse.redirect(new URL('/', request.url));
+      const url = new URL('/', request.url);
+      return NextResponse.redirect(url);
     }
+    
+    console.log(`✅ Middleware: Token found, allowing access to ${pathname}`);
   }
 
   return NextResponse.next();

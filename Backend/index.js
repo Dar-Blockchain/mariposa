@@ -19,6 +19,9 @@ const walletRoutes = require('./routes/walletRoutes');
 const agentChatRoutes = require('./routes/agentChatRoutes');
 const simpleHederaAgentRoutes = require('./routes/simpleHederaAgents');
 const authRoutes = require('./routes/authRoutes');
+const executorAgentRoutes = require('./routes/executorAgentRoutes');
+const enhancedIntentRoutes = require('./routes/enhancedIntentRoutes');
+const hederaAgentsRoutes = require('./routes/hederaAgentsRoutes');
 
 // Initialize Express app
 const app = express();
@@ -46,10 +49,13 @@ app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/agent', aiAgentRoutes);
 app.use('/api/agents', agentRoutes);
-// app.use('/api/agents/hedera', simpleHederaAgentRoutes); // Disabled - no longer used in client pipeline
+// app.use('/api/agents/hedera', simpleHederaAgentRoutes); // Commented out to avoid route conflict
 app.use('/api/wallets', walletRoutes);
 app.use('/api/agent-chat', agentChatRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/executor-agents', executorAgentRoutes);
+app.use('/api/enhanced-intent', enhancedIntentRoutes);
+app.use('/api/hedera/agents', hederaAgentsRoutes);
 
 // Swagger documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
@@ -75,7 +81,8 @@ app.get('/', (req, res) => {
       products: '/api/products',
       aiAgent: '/api/agent',
       agents: '/api/agents',
-      agentChat: '/api/agent-chat'
+      agentChat: '/api/agent-chat',
+      executorAgents: '/api/executor-agents'
     },
     version: '1.0.0',
     timestamp: new Date().toISOString()

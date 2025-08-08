@@ -86,6 +86,125 @@ const strategySchema = new mongoose.Schema({
   successMetrics: {
     type: String
   },
+  
+  // Real-time market data integration
+  marketDataSnapshot: {
+    timestamp: {
+      type: Date,
+      default: Date.now
+    },
+    hederaMarketCap: Number,
+    totalVolume24h: Number,
+    tokensPrices: {
+      type: mongoose.Schema.Types.Mixed
+    },
+    topTokens: [{
+      symbol: String,
+      price: Number,
+      change24h: Number,
+      volume: Number
+    }],
+    marketSentiment: {
+      type: String,
+      enum: ['bullish', 'bearish', 'neutral', 'volatile']
+    }
+  },
+  
+  // Actionable tasks and execution plan
+  actionPlan: {
+    phases: [{
+      phaseNumber: {
+        type: Number,
+        required: true
+      },
+      phaseName: String,
+      duration: String, // e.g., "2 weeks", "1 month"
+      tasks: [{
+        taskId: {
+          type: String,
+          required: true,
+          unique: true
+        },
+        taskType: {
+          type: String,
+          enum: ['BUY', 'SELL', 'SWAP', 'STAKE', 'MONITOR', 'REBALANCE', 'STOP_LOSS', 'TAKE_PROFIT', 'DCA'],
+          required: true
+        },
+        tokenSymbol: String,
+        targetPrice: Number,
+        allocation: String, // percentage or amount
+        priority: {
+          type: String,
+          enum: ['high', 'medium', 'low'],
+          default: 'medium'
+        },
+        triggerConditions: {
+          priceAbove: Number,
+          priceBelow: Number,
+          volumeThreshold: Number,
+          marketCondition: String,
+          timeCondition: String
+        },
+        executionInstructions: String,
+        status: {
+          type: String,
+          enum: ['pending', 'scheduled', 'executed', 'failed', 'cancelled'],
+          default: 'pending'
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now
+        },
+        scheduledFor: Date,
+        executedAt: Date,
+        executionResult: {
+          success: Boolean,
+          transactionHash: String,
+          amountExecuted: Number,
+          priceExecuted: Number,
+          gasUsed: Number,
+          errorMessage: String
+        }
+      }]
+    }],
+    totalEstimatedDuration: String,
+    riskManagement: {
+      stopLossGlobal: Number,
+      takeProfitGlobal: Number,
+      maxDrawdown: Number,
+      riskScore: Number
+    }
+  },
+  
+  // Agent assignment for execution
+  executorAgentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ExecutorAgent',
+    index: true
+  },
+  
+  // Strategy execution tracking
+  executionStatus: {
+    type: String,
+    enum: ['not_started', 'in_progress', 'completed', 'paused', 'failed'],
+    default: 'not_started'
+  },
+  
+  executionMetrics: {
+    tasksCompleted: {
+      type: Number,
+      default: 0
+    },
+    tasksTotal: {
+      type: Number,
+      default: 0
+    },
+    currentReturn: Number,
+    totalInvested: Number,
+    lastExecutionDate: Date,
+    performanceScore: Number
+  },
+  
   status: {
     type: String,
     enum: ['generated', 'applied', 'modified', 'archived'],

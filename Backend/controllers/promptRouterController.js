@@ -2,7 +2,9 @@ const { validationResult } = require('express-validator');
 const messageClassificationService = require('../services/messageClassificationService');
 const actionsProcessingService = require('../services/actionsProcessingService');
 const hederaTokenService = require('../services/hederaTokenService');
+const EnhancedIntentService = require('../services/enhancedIntentService');
 const Agent = require('../models/Agent');
+const { fetchMarketData } = require('../utils/marketData');
 
 // Initialize Together AI for information processing
 let Together;
@@ -18,7 +20,11 @@ if (Together && process.env.TOGETHER_API_KEY) {
     together = new Together({
       apiKey: process.env.TOGETHER_API_KEY
     });
-    console.log('✅ TogetherAI initialized successfully');
+    
+    // Set global instance for use in other services
+    global.togetherAI = together;
+    
+    console.log('✅ TogetherAI initialized successfully and set globally');
   } catch (error) {
     console.error('❌ Together AI initialization failed:', error.message);
   }
@@ -26,7 +32,39 @@ if (Together && process.env.TOGETHER_API_KEY) {
   console.warn('⚠️ TogetherAI not configured. Set TOGETHER_API_KEY environment variable.');
 }
 
+// Initialize Enhanced Intent Service
+const enhancedIntentService = new EnhancedIntentService();
+
 class PromptRouterController {
+  /**
+   * Convert BigInt values to strings for JSON serialization
+   * @param {any} obj - Object that may contain BigInt values
+   * @returns {any} Object with BigInt values converted to strings
+   */
+  sanitizeBigInt(obj) {
+    if (obj === null || obj === undefined) {
+      return obj;
+    }
+    
+    if (typeof obj === 'bigint') {
+      return obj.toString();
+    }
+    
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.sanitizeBigInt(item));
+    }
+    
+    if (typeof obj === 'object') {
+      const sanitized = {};
+      for (const [key, value] of Object.entries(obj)) {
+        sanitized[key] = this.sanitizeBigInt(value);
+      }
+      return sanitized;
+    }
+    
+    return obj;
+  }
+
   /**
    * Main prompt router endpoint - Two Layer Processing
    * Layer 1: Message Classification
@@ -84,8 +122,9 @@ class PromptRouterController {
           break;
           
         case 'strategy':
-          console.log('📈 Layer 2: Strategy processing (placeholder)...');
-          processingResult = await this.processStrategy(message, classification);
+          console.log('📈 Layer 2: Processing strategy with real-time market data...');
+          const strategyOptions = { userId, agentId, execute: execute };
+          processingResult = await this.processStrategy(message, classification, strategyOptions);
           break;
           
         case 'information':
@@ -126,7 +165,7 @@ class PromptRouterController {
           metadata: {
             originalMessage: message,
             userId: userId || null,
-            agentId: agentId || null,
+            agentId: agentId ? String(agentId) : null,
             processingTime: `${processingTime}ms`,
             timestamp: new Date().toISOString(),
             routerVersion: '1.0.0'
@@ -134,12 +173,14 @@ class PromptRouterController {
         }
       };
 
-      res.json(response);
+      // Sanitize BigInt values before sending response
+      const sanitizedResponse = this.sanitizeBigInt(response);
+      res.json(sanitizedResponse);
 
     } catch (error) {
       console.error('❌ Prompt Router Error:', error);
       
-      res.status(500).json({
+      const errorResponse = {
         success: false,
         message: 'Prompt routing failed',
         error: error.message,
@@ -147,7 +188,11 @@ class PromptRouterController {
           timestamp: new Date().toISOString(),
           routerVersion: '1.0.0'
         }
-      });
+      };
+      
+      // Sanitize BigInt values in error response
+      const sanitizedErrorResponse = this.sanitizeBigInt(errorResponse);
+      res.status(500).json(sanitizedErrorResponse);
     }
   }
 
@@ -187,37 +232,43 @@ class PromptRouterController {
   }
 
   /**
-   * Process strategy type messages - AI-Powered Strategy Analysis with Metrics
+   * Process strategy type messages - AI-Powered Strategy Analysis with Metrics and Action Plans
    * @param {string} message - User message
    * @param {Object} classification - Classification result
+   * @param {Object} options - Processing options with userId and agentId
    * @returns {Object} Strategy processing result
    */
-  processStrategy = async (message, classification) => {
+  processStrategy = async (message, classification, options = {}) => {
     try {
-      console.log('📈 Processing strategy request with AI-powered analysis...');
+      console.log('📈 Processing strategy request with real-time market analysis...');
       console.log('📝 Strategy message:', message);
       console.log('🏷️ Classification:', classification.type, '-', classification.actionSubtype);
+      console.log('👤 Options:', options);
       
       // Extract potential token mentions from message
       const tokenMentions = this.extractTokenMentions(message);
       
-      // Get comprehensive market data for strategy analysis
+      // Get comprehensive REAL-TIME market data for strategy analysis
       let marketData = {};
       try {
         if (hederaTokenService) {
-          const topTokens = hederaTokenService.getTopTokens ? hederaTokenService.getTopTokens(30) : [];
+          console.log('🌊 Fetching real-time Hedera market data...');
+          const topTokens = hederaTokenService.getTopTokens ? hederaTokenService.getTopTokens(50) : [];
           const hederaStats = hederaTokenService.getStats ? hederaTokenService.getStats() : {};
           
-          // Get specific data for mentioned tokens
+          // Get specific real-time data for mentioned tokens
           const strategyTokens = [];
           for (const tokenSymbol of tokenMentions) {
             try {
               const searchResults = hederaTokenService.searchTokens ? hederaTokenService.searchTokens(tokenSymbol) : [];
               if (searchResults.length > 0) {
                 const tokenInfo = searchResults[0];
+                // Get live market data for more accurate analysis
+                const liveData = await hederaTokenService.getLiveTokenData(tokenInfo.id);
                 const analysis = hederaTokenService.analyzeToken ? await hederaTokenService.analyzeToken(tokenInfo.id) : null;
                 strategyTokens.push({
                   token: tokenInfo,
+                  liveData: liveData?.success ? liveData.data : null,
                   analysis: analysis?.success ? analysis.analysis : null
                 });
               }
@@ -232,21 +283,43 @@ class PromptRouterController {
             hederaStats,
             marketCap: topTokens.reduce((sum, t) => sum + (parseFloat(t.marketCap) || 0), 0),
             totalVolume: topTokens.reduce((sum, t) => sum + (parseFloat(t.volume24h) || 0), 0),
+            avgPrice: topTokens.length > 0 ? topTokens.reduce((sum, t) => sum + (parseFloat(t.priceUsd) || 0), 0) / topTokens.length : 0,
+            volatilityIndex: this.calculateVolatilityIndex(topTokens),
+            marketTrend: this.determineMarketTrend(topTokens),
+            liquidityScore: this.calculateLiquidityScore(topTokens),
             timestamp: new Date().toISOString()
           };
+          
+          console.log('✅ Real-time market data fetched:', {
+            tokensCount: topTokens.length,
+            marketCap: `$${(marketData.marketCap / 1000000).toFixed(1)}M`,
+            volume24h: `$${(marketData.totalVolume / 1000000).toFixed(1)}M`,
+            mentionedTokens: tokenMentions.length
+          });
         }
       } catch (dataError) {
         console.error('❌ Market data fetch failed for strategy:', dataError.message);
-        marketData = { topTokens: [], strategyTokens: [], hederaStats: {}, marketCap: 0, totalVolume: 0, timestamp: new Date().toISOString() };
+        marketData = { 
+          topTokens: [], 
+          strategyTokens: [], 
+          hederaStats: {}, 
+          marketCap: 0, 
+          totalVolume: 0,
+          avgPrice: 0,
+          volatilityIndex: 0,
+          marketTrend: 'unknown',
+          liquidityScore: 0,
+          timestamp: new Date().toISOString() 
+        };
       }
       
-      // Use AI for comprehensive strategy analysis if available
+      // Use AI for comprehensive strategy analysis with actionable tasks
       let strategyAnalysis = {};
       if (together) {
         try {
-          console.log('🤖 Using TogetherAI for strategy analysis...');
+          console.log('🤖 Using TogetherAI for dynamic strategy analysis...');
           
-          const strategyPrompt = this.buildStrategyPrompt(message, tokenMentions, marketData);
+          const strategyPrompt = this.buildEnhancedStrategyPrompt(message, tokenMentions, marketData);
           
           const aiResponse = await together.chat.completions.create({
             model: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
@@ -260,7 +333,7 @@ class PromptRouterController {
                 content: strategyPrompt.user
               }
             ],
-            max_tokens: 4000,
+            max_tokens: 6000,
             temperature: 0.3,
             top_p: 0.9,
             response_format: { type: 'json_object' }
@@ -271,7 +344,7 @@ class PromptRouterController {
           const responseContent = aiResponse.choices[0].message.content;
           strategyAnalysis = JSON.parse(responseContent);
           
-          console.log('🎯 AI strategy analysis completed');
+          console.log('🎯 AI strategy analysis completed with action plan');
           
         } catch (aiError) {
           console.error('❌ TogetherAI strategy analysis failed:', aiError.message);
@@ -282,8 +355,38 @@ class PromptRouterController {
         strategyAnalysis = this.generateBasicStrategyAnalysis(message, tokenMentions, marketData);
       }
       
-      // Ensure proper structure
-      strategyAnalysis = this.validateStrategyResponse(strategyAnalysis, marketData, tokenMentions);
+      // Ensure proper structure and enhance with actionable tasks
+      strategyAnalysis = this.validateAndEnhanceStrategyResponse(strategyAnalysis, marketData, tokenMentions);
+      
+      // Save strategy to database if userId and agentId are provided
+      let savedStrategy = null;
+      let executorAgent = null;
+      
+      if (options.userId && options.agentId) {
+        try {
+          console.log('💾 Saving strategy to database...');
+          savedStrategy = await this.saveStrategyToDatabase(strategyAnalysis, message, marketData, options);
+          
+          console.log('🤖 Creating integrated executor agent...');
+          const actionExecutionService = require('../services/actionExecutionService');
+          const agentCreationResult = await actionExecutionService.createExecutorAgent(
+            savedStrategy,
+            options.userId,
+            options.agentId
+          );
+          
+          executorAgent = agentCreationResult.executorAgent;
+          const standardAgent = agentCreationResult.standardAgent;
+          
+          console.log('✅ Strategy, standard agent, and executor agent created successfully:', {
+            strategy: savedStrategy._id,
+            standardAgent: standardAgent._id,
+            executorAgent: executorAgent._id
+          });
+        } catch (dbError) {
+          console.error('❌ Error saving strategy or creating executor agent:', dbError.message);
+        }
+      }
       
       return {
         type: 'strategy',
@@ -294,10 +397,40 @@ class PromptRouterController {
           riskAssessment: strategyAnalysis.riskAssessment || {},
           implementation: strategyAnalysis.implementation || {},
           performance: strategyAnalysis.performance || {},
-          timeline: strategyAnalysis.timeline || {}
+          timeline: strategyAnalysis.timeline || {},
+          actionPlan: strategyAnalysis.actionPlan || {},
+          marketContext: {
+            timestamp: marketData.timestamp,
+            marketCap: marketData.marketCap,
+            totalVolume: marketData.totalVolume,
+            marketTrend: marketData.marketTrend,
+            volatilityIndex: marketData.volatilityIndex
+          }
+        },
+        metadata: {
+          savedStrategy: savedStrategy ? {
+            id: savedStrategy._id,
+            status: savedStrategy.status,
+            executionStatus: savedStrategy.executionStatus
+          } : null,
+          executorAgent: executorAgent ? {
+            id: executorAgent._id,
+            status: executorAgent.status,
+            capabilities: executorAgent.capabilities
+          } : null,
+          standardAgent: executorAgent ? {
+            id: executorAgent.parentAgentId,
+            name: `${strategyAnalysis.strategy?.type || 'Strategy'} Agent`,
+            linkedToUser: true
+          } : null,
+          marketDataUsed: {
+            tokensAnalyzed: marketData.topTokens?.length || 0,
+            realTimeData: true,
+            dataSource: 'hederaTokenService'
+          }
         },
         status: 'completed',
-        processingMethod: together ? 'ai_powered_strategy_analysis' : 'basic_strategy_analysis',
+        processingMethod: together ? 'ai_powered_dynamic_strategy_analysis' : 'basic_strategy_analysis',
         confidence: strategyAnalysis.confidence || 'medium',
         aiEnhanced: !!together
       };
@@ -360,32 +493,79 @@ class PromptRouterController {
       const tokenMentions = this.extractTokenMentions(message);
       const requestType = this.classifyInformationRequest(message);
       
-      // Fetch comprehensive Hedera market data
-      console.log('📊 Fetching comprehensive Hedera market data...');
+      // Fetch comprehensive market data using updated utility (includes GeckoTerminal for HBAR)
+      console.log('📊 Fetching comprehensive market data with GeckoTerminal integration...');
       let marketData = {};
       
       try {
-        // Get comprehensive market data from Hedera token service
+        // First, fetch real-time market data from our updated utility
+        console.log('🦎 Fetching market data from CoinGecko + GeckoTerminal...');
+        const realTimeMarketData = await fetchMarketData(['BTC', 'ETH', 'HBAR', 'USDC', 'USDT', 'DAI', 'LINK', 'MATIC']);
+        
+        // Get comprehensive market data from Hedera token service for additional tokens
         let topTokens = [];
         let hederaStats = {};
         
         if (hederaTokenService) {
-          console.log('🔍 Fetching Hedera token data...');
+          console.log('🔍 Fetching additional Hedera token data...');
           topTokens = hederaTokenService.getTopTokens ? hederaTokenService.getTopTokens(50) : [];
           hederaStats = hederaTokenService.getStats ? hederaTokenService.getStats() : {};
+          
+          // Override HBAR data with real-time data from our utility
+          if (realTimeMarketData.tokens.HBAR) {
+            console.log('✅ Overriding HBAR data with GeckoTerminal data...');
+            const hbarFromGecko = realTimeMarketData.tokens.HBAR;
+            
+            // Find HBAR in topTokens and update it
+            const hbarIndex = topTokens.findIndex(t => t.symbol === 'HBAR');
+            if (hbarIndex !== -1) {
+              topTokens[hbarIndex] = {
+                ...topTokens[hbarIndex],
+                priceUsd: hbarFromGecko.price,
+                marketCap: hbarFromGecko.marketCap,
+                volume24h: hbarFromGecko.volume24h,
+                change24h: hbarFromGecko.change24h,
+                source: 'GeckoTerminal'
+              };
+              console.log('🎯 HBAR data updated:', {
+                price: hbarFromGecko.price,
+                marketCap: hbarFromGecko.marketCap,
+                volume24h: hbarFromGecko.volume24h,
+                change24h: hbarFromGecko.change24h
+              });
+            }
+          }
           
           // Get additional data for mentioned tokens
           const specificTokenData = [];
           for (const tokenSymbol of tokenMentions) {
             try {
-              const searchResults = hederaTokenService.searchTokens ? hederaTokenService.searchTokens(tokenSymbol) : [];
-              if (searchResults.length > 0) {
-                const tokenInfo = searchResults[0];
-                const analysis = hederaTokenService.analyzeToken ? await hederaTokenService.analyzeToken(tokenInfo.id) : null;
+              // Check if we have real-time data for this token
+              if (realTimeMarketData.tokens[tokenSymbol.toUpperCase()]) {
+                const realtimeToken = realTimeMarketData.tokens[tokenSymbol.toUpperCase()];
                 specificTokenData.push({
-                  token: tokenInfo,
-                  analysis: analysis?.success ? analysis.analysis : null
+                  token: {
+                    symbol: tokenSymbol.toUpperCase(),
+                    name: tokenSymbol.toUpperCase(),
+                    priceUsd: realtimeToken.price,
+                    marketCap: realtimeToken.marketCap,
+                    volume24h: realtimeToken.volume24h,
+                    change24h: realtimeToken.change24h,
+                    source: realtimeToken.source || 'Real-time API'
+                  },
+                  analysis: null
                 });
+              } else {
+                // Fallback to Hedera token service
+                const searchResults = hederaTokenService.searchTokens ? hederaTokenService.searchTokens(tokenSymbol) : [];
+                if (searchResults.length > 0) {
+                  const tokenInfo = searchResults[0];
+                  const analysis = hederaTokenService.analyzeToken ? await hederaTokenService.analyzeToken(tokenInfo.id) : null;
+                  specificTokenData.push({
+                    token: tokenInfo,
+                    analysis: analysis?.success ? analysis.analysis : null
+                  });
+                }
               }
             } catch (tokenError) {
               console.warn(`Failed to fetch data for token ${tokenSymbol}:`, tokenError.message);
@@ -2103,7 +2283,687 @@ Create a detailed, actionable strategy that balances growth potential with appro
     };
   }
 
+  /**
+   * Calculate volatility index based on token price changes
+   */
+  calculateVolatilityIndex(tokens) {
+    if (!tokens || tokens.length === 0) return 0;
+    
+    const changes = tokens
+      .filter(t => t.change24h !== undefined)
+      .map(t => Math.abs(t.change24h));
+    
+    if (changes.length === 0) return 0;
+    
+    const avgChange = changes.reduce((sum, change) => sum + change, 0) / changes.length;
+    return Math.round(avgChange * 10) / 10; // Round to 1 decimal
+  }
+
+  /**
+   * Determine overall market trend
+   */
+  determineMarketTrend(tokens) {
+    if (!tokens || tokens.length === 0) return 'neutral';
+    
+    const changes = tokens
+      .filter(t => t.change24h !== undefined)
+      .map(t => t.change24h);
+    
+    if (changes.length === 0) return 'neutral';
+    
+    const avgChange = changes.reduce((sum, change) => sum + change, 0) / changes.length;
+    const positiveTrends = changes.filter(c => c > 0).length;
+    const negativeTrends = changes.filter(c => c < 0).length;
+    
+    if (avgChange > 2 && positiveTrends > negativeTrends) return 'bullish';
+    if (avgChange < -2 && negativeTrends > positiveTrends) return 'bearish';
+    if (Math.abs(avgChange) > 5) return 'volatile';
+    return 'neutral'; // Changed from 'sideways' to 'neutral'
+  }
+
+  /**
+   * Calculate liquidity score based on volume and market participation
+   */
+  calculateLiquidityScore(tokens) {
+    if (!tokens || tokens.length === 0) return 0;
+    
+    const liquidTokens = tokens.filter(t => t.inTopPools && t.volume24h > 0).length;
+    const totalTokens = tokens.length;
+    
+    return Math.round((liquidTokens / totalTokens) * 100);
+  }
+
+  /**
+   * Build enhanced strategy prompt with real-time market data
+   */
+  buildEnhancedStrategyPrompt(message, tokenMentions, marketData) {
+    const currentTime = new Date().toLocaleString();
+    const hasTokenData = tokenMentions.length > 0 && marketData.strategyTokens && marketData.strategyTokens.length > 0;
+    
+    const systemPrompt = `You are a senior DeFi investment strategist and portfolio manager specializing in the Hedera ecosystem with real-time market analysis capabilities. You create comprehensive, executable investment strategies with detailed action plans.
+
+REAL-TIME MARKET CONTEXT:
+- Analysis Time: ${currentTime}
+- Market Trend: ${marketData.marketTrend}
+- Volatility Index: ${marketData.volatilityIndex}%
+- Liquidity Score: ${marketData.liquidityScore}%
+- Total Market Cap: $${marketData.marketCap ? (marketData.marketCap / 1000000).toFixed(1) + 'M' : 'N/A'}
+- 24h Volume: $${marketData.totalVolume ? (marketData.totalVolume / 1000000).toFixed(1) + 'M' : 'N/A'}
+
+RESPONSE FORMAT (STRICT JSON WITH EXECUTABLE ACTION PLAN):
+{
+  "strategy": {
+    "name": "Strategy Name",
+    "type": "Conservative Growth|Balanced|Aggressive Growth|Yield Focused|Custom",
+    "objective": "Clear strategy goal",
+    "riskLevel": 35,
+    "expectedReturn": 25.5,
+    "timeHorizon": "3-6 months",
+    "confidenceScore": 85
+  },
+  "analysis": {
+    "marketCondition": "Current market assessment",
+    "opportunityScore": 78,
+    "riskReward": 2.8,
+    "marketSentiment": "bullish|bearish|neutral",
+    "keyInsights": ["Insight 1", "Insight 2", "Insight 3"]
+  },
+  "actionPlan": {
+    "phases": [
+      {
+        "phaseNumber": 1,
+        "phaseName": "Initial Allocation",
+        "duration": "2 weeks",
+        "tasks": [
+          {
+            "taskType": "BUY",
+            "tokenSymbol": "HBAR",
+            "allocation": "40%",
+            "targetPrice": 0.065,
+            "priority": "high",
+            "triggerConditions": {
+              "priceBelow": 0.067,
+              "volumeThreshold": 1000000,
+              "marketCondition": "stable"
+            },
+            "executionInstructions": "Execute during market hours with limit order"
+          }
+        ]
+      }
+    ],
+    "totalEstimatedDuration": "8-12 weeks",
+    "riskManagement": {
+      "stopLossGlobal": 15,
+      "takeProfitGlobal": 30,
+      "maxDrawdown": 20,
+      "riskScore": 45
+    }
+  },
+  "recommendations": [
+    {
+      "token": "HBAR",
+      "action": "BUY",
+      "confidence": 85,
+      "targetPrice": 0.085,
+      "currentPrice": 0.065,
+      "upside": 30.8,
+      "reasoning": "Strong fundamentals and network growth"
+    }
+  ],
+  "implementation": {
+    "immediateActions": ["Action 1", "Action 2"],
+    "weeklyTasks": ["Task 1", "Task 2"],
+    "monitoringPoints": ["Monitor 1", "Monitor 2"]
+  },
+  "performance": {
+    "target30d": 8.5,
+    "target90d": 20.2,
+    "worstCase": -12.5,
+    "bestCase": 45.8,
+    "probability": 72
+  }
+}
+
+STRATEGY REQUIREMENTS:
+- Create executable action plans with specific tasks
+- Include trigger conditions for automated execution
+- Provide realistic timelines and risk management
+- Focus on Hedera ecosystem opportunities
+- Include both manual and automated execution options`;
+
+    let tokenAnalysis = '';
+    if (hasTokenData) {
+      tokenAnalysis = `
+REAL-TIME TOKEN ANALYSIS:
+${marketData.strategyTokens.map(item => `
+• ${item.token.symbol} (${item.token.name}):
+  - Current Price: $${item.token.priceUsd?.toFixed(6) || 'N/A'}
+  - Live Price: $${item.liveData?.attributes?.price_usd?.toFixed(6) || 'Same'}
+  - Market Cap: $${item.token.marketCap ? (item.token.marketCap / 1000000).toFixed(1) + 'M' : 'N/A'}
+  - 24h Change: ${item.token.change24h ? (item.token.change24h > 0 ? '+' : '') + item.token.change24h.toFixed(2) + '%' : 'N/A'}
+  - Volume: $${item.token.volume24h ? (item.token.volume24h / 1000000).toFixed(1) + 'M' : 'N/A'}
+  - Liquidity: ${item.token.inTopPools ? 'High' : 'Limited'}
+  - Risk Level: ${item.analysis?.riskAssessment?.level || 'Unknown'}
+`).join('')}`;
+    }
+
+    const userPrompt = `Create a comprehensive, executable investment strategy:
+
+USER REQUEST: "${message}"
+
+STRATEGY PARAMETERS:
+• Focus Tokens: ${tokenMentions.length > 0 ? tokenMentions.join(', ') : 'Hedera ecosystem diversification'}
+• Real-time Market Data: ${marketData.topTokens?.length || 0} tokens analyzed
+• Market Condition: ${marketData.marketTrend} trend with ${marketData.volatilityIndex}% volatility
+${tokenAnalysis}
+
+CURRENT MARKET SNAPSHOT:
+• Top Hedera Tokens by Volume:
+${marketData.topTokens?.slice(0, 5).map(token => 
+  `  - ${token.symbol}: $${token.priceUsd?.toFixed(6) || 'N/A'} (${token.change24h > 0 ? '+' : ''}${token.change24h?.toFixed(2) || '0.00'}%)`
+).join('\n') || '  - No data available'}
+
+• Market Metrics:
+  - Volatility Index: ${marketData.volatilityIndex}%
+  - Liquidity Score: ${marketData.liquidityScore}%
+  - Active Trading Pairs: ${marketData.topTokens?.filter(t => t.inTopPools).length || 0}
+
+STRATEGY REQUIREMENTS:
+1. Executable Action Plan: Create phases with specific, actionable tasks
+2. Real-time Triggers: Use current market data for trigger conditions
+3. Risk Management: Include stop-loss and take-profit levels
+4. Timeline: Provide realistic execution timeline
+5. Automation Ready: Prepare tasks for automated execution by AI agent
+
+Create a strategy that can be immediately saved to database and executed by an AI agent.`;
+
+    return {
+      system: systemPrompt,
+      user: userPrompt
+    };
+  }
+
+  /**
+   * Validate and enhance strategy response with proper action plan structure
+   */
+  validateAndEnhanceStrategyResponse(strategyAnalysis, marketData, tokenMentions) {
+    // Ensure basic structure exists
+    if (!strategyAnalysis.strategy) {
+      strategyAnalysis.strategy = {
+        name: 'Hedera Ecosystem Strategy',
+        type: 'Balanced',
+        riskLevel: 50,
+        expectedReturn: 20,
+        timeHorizon: '3-6 months'
+      };
+    }
+
+    if (!strategyAnalysis.actionPlan) {
+      strategyAnalysis.actionPlan = this.generateBasicActionPlan(tokenMentions, marketData);
+    }
+
+    if (!strategyAnalysis.recommendations) {
+      strategyAnalysis.recommendations = [];
+    }
+
+    // Enhance action plan with unique task IDs and proper structure
+    if (strategyAnalysis.actionPlan && strategyAnalysis.actionPlan.phases) {
+      strategyAnalysis.actionPlan.phases.forEach((phase, phaseIndex) => {
+        phase.phaseNumber = phaseIndex + 1;
+        if (phase.tasks) {
+          phase.tasks.forEach((task, taskIndex) => {
+            if (!task.taskId) {
+              task.taskId = `task_${Date.now()}_${phaseIndex}_${taskIndex}`;
+            }
+            if (!task.priority) {
+              task.priority = 'medium';
+            }
+            
+            // Sanitize targetPrice to ensure it's a number
+            if (task.targetPrice) {
+              task.targetPrice = this.sanitizeTargetPrice(task.targetPrice, task.tokenSymbol, marketData);
+            }
+            
+            if (!task.triggerConditions) {
+              task.triggerConditions = this.generateTriggerConditions(task, marketData);
+            }
+          });
+        }
+      });
+    }
+
+    return strategyAnalysis;
+  }
+
+  /**
+   * Generate basic action plan when AI doesn't provide one
+   */
+  generateBasicActionPlan(tokenMentions, marketData) {
+    const hasTokens = tokenMentions.length > 0;
+    const tokens = hasTokens ? tokenMentions : ['HBAR', 'SAUCE', 'USDC'];
+    
+    return {
+      phases: [
+        {
+          phaseNumber: 1,
+          phaseName: 'Initial Setup',
+          duration: '1 week',
+          tasks: tokens.map((token, index) => ({
+            taskId: `task_${Date.now()}_${index}`,
+            taskType: 'BUY',
+            tokenSymbol: token,
+            allocation: `${Math.round(100/tokens.length)}%`,
+            priority: index === 0 ? 'high' : 'medium',
+            triggerConditions: this.generateTriggerConditions({ tokenSymbol: token }, marketData),
+            executionInstructions: `Acquire ${token} allocation during favorable market conditions`
+          }))
+        },
+        {
+          phaseNumber: 2,
+          phaseName: 'Monitoring & Optimization',
+          duration: '4-8 weeks',
+          tasks: [
+            {
+              taskId: `task_${Date.now()}_monitor`,
+              taskType: 'MONITOR',
+              tokenSymbol: 'ALL',
+              allocation: '100%',
+              priority: 'medium',
+              triggerConditions: {
+                timeCondition: 'daily',
+                marketCondition: 'any'
+              },
+              executionInstructions: 'Monitor portfolio performance and market conditions'
+            }
+          ]
+        }
+      ],
+      totalEstimatedDuration: '6-10 weeks',
+      riskManagement: {
+        stopLossGlobal: 15,
+        takeProfitGlobal: 25,
+        maxDrawdown: 20,
+        riskScore: 50
+      }
+    };
+  }
+
+  /**
+   * Generate trigger conditions for tasks
+   */
+  generateTriggerConditions(task, marketData) {
+    const tokenData = marketData.topTokens?.find(t => t.symbol === task.tokenSymbol);
+    
+    if (tokenData) {
+      return {
+        priceBelow: tokenData.priceUsd * 1.05, // 5% above current price
+        volumeThreshold: tokenData.volume24h * 0.5, // Half of current volume
+        marketCondition: 'stable'
+      };
+    }
+
+    return {
+      marketCondition: 'stable',
+      timeCondition: 'market_hours'
+    };
+  }
+
+  /**
+   * Save strategy to database
+   */
+  async saveStrategyToDatabase(strategyAnalysis, originalMessage, marketData, options) {
+    const Strategy = require('../models/Strategy');
+    const { v4: uuidv4 } = require('uuid');
+
+    const strategy = new Strategy({
+      userId: options.userId,
+      agentId: options.agentId,
+      agentName: `Strategy Agent ${Date.now()}`,
+      agentUuid: uuidv4(),
+      description: strategyAnalysis.strategy?.objective || 'AI-generated Hedera strategy',
+      primaryStrategy: this.mapStrategyType(strategyAnalysis.strategy?.type),
+      riskTolerance: this.mapRiskLevel(strategyAnalysis.strategy?.riskLevel),
+      defaultBudget: 1000, // Default budget
+      frequency: 'daily',
+      portfolioAllocation: this.extractPortfolioAllocation(strategyAnalysis),
+      maxPositionSize: 20, // 20% max per position
+      stopLossPercentage: strategyAnalysis.actionPlan?.riskManagement?.stopLossGlobal || 15,
+      takeProfitPercentage: strategyAnalysis.actionPlan?.riskManagement?.takeProfitGlobal || 25,
+      customPrompt: originalMessage,
+      extractedIntent: strategyAnalysis.strategy?.objective,
+      portfolioManagementPlan: strategyAnalysis.implementation || {},
+      marketInsights: JSON.stringify(strategyAnalysis.analysis),
+      riskAssessment: JSON.stringify(strategyAnalysis.actionPlan?.riskManagement),
+      strategyAdvantages: strategyAnalysis.recommendations?.map(r => r.reasoning).join('; '),
+      potentialDrawbacks: `Max drawdown: ${strategyAnalysis.actionPlan?.riskManagement?.maxDrawdown || 20}%`,
+      successMetrics: JSON.stringify(strategyAnalysis.performance),
+      
+      // Enhanced fields
+      marketDataSnapshot: {
+        timestamp: new Date(),
+        hederaMarketCap: marketData.marketCap,
+        totalVolume24h: marketData.totalVolume,
+        tokensPrices: this.extractTokenPrices(marketData),
+        topTokens: marketData.topTokens?.slice(0, 10).map(t => ({
+          symbol: t.symbol,
+          price: t.priceUsd,
+          change24h: t.change24h,
+          volume: t.volume24h
+        })) || [],
+        marketSentiment: marketData.marketTrend
+      },
+      
+      actionPlan: strategyAnalysis.actionPlan,
+      executionStatus: 'not_started',
+      executionMetrics: {
+        tasksCompleted: 0,
+        tasksTotal: this.countTotalTasks(strategyAnalysis.actionPlan),
+        currentReturn: 0,
+        totalInvested: 0
+      },
+      
+      originalUserMessage: originalMessage,
+      status: 'generated'
+    });
+
+    return await strategy.save();
+  }
+
+  /**
+   * Helper method to map strategy types
+   */
+  mapStrategyType(aiStrategyType) {
+    const mapping = {
+      'Conservative Growth': 'DCA',
+      'Balanced': 'swing_trading',
+      'Aggressive Growth': 'momentum_trading',
+      'Yield Focused': 'yield_farming',
+      'Custom': 'custom'
+    };
+    return mapping[aiStrategyType] || 'custom';
+  }
+
+  /**
+   * Helper method to map risk levels
+   */
+  mapRiskLevel(riskScore) {
+    if (riskScore <= 30) return 'conservative';
+    if (riskScore <= 70) return 'moderate';
+    return 'aggressive';
+  }
+
+  /**
+   * Extract portfolio allocation from strategy analysis
+   */
+  extractPortfolioAllocation(strategyAnalysis) {
+    const allocation = {};
+    
+    if (strategyAnalysis.recommendations) {
+      strategyAnalysis.recommendations.forEach(rec => {
+        if (rec.token && rec.allocation) {
+          allocation[rec.token] = rec.allocation;
+        }
+      });
+    }
+
+    // Default allocation if none provided
+    if (Object.keys(allocation).length === 0) {
+      allocation['HBAR'] = '40%';
+      allocation['SAUCE'] = '30%';
+      allocation['USDC'] = '30%';
+    }
+
+    return allocation;
+  }
+
   // ===== END HELPER METHODS =====
+
+  /**
+   * Enhanced message processing with intent validation and interactive components
+   */
+  processMessageWithValidation = async (req, res) => {
+    try {
+      console.log('📨 Enhanced message processing started');
+      
+      const { message, userId, sessionId } = req.body;
+
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({
+          success: false,
+          error: 'Message is required and must be a string',
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Parse message with enhanced intent service
+      const intentResult = await enhancedIntentService.parseMessageWithValidation(message, userId);
+
+      // Check if action is complete or needs more information
+      if (intentResult.validation.isValid && intentResult.classification.type === 'actions') {
+        // Process the complete action
+        console.log('✅ Action is complete, processing...');
+        
+        try {
+          const actionResult = await actionsProcessingService.executeAction(
+            intentResult.extraction.actionType,
+            intentResult.validation.resolved,
+            userId
+          );
+
+          return res.json({
+            success: true,
+            type: 'actionComplete',
+            data: {
+              intent: intentResult,
+              actionResult: this.sanitizeBigInt(actionResult)
+            },
+            timestamp: new Date().toISOString()
+          });
+
+        } catch (actionError) {
+          console.error('❌ Action execution failed:', actionError);
+          return res.json({
+            success: false,
+            type: 'actionError',
+            data: {
+              intent: intentResult,
+              error: actionError.message
+            },
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+
+      // If missing arguments, return interactive components
+      if (intentResult.interactiveData) {
+        console.log('🔄 Missing arguments, returning interactive components');
+        
+        return res.json({
+          success: true,
+          type: 'argumentRequest',
+          data: {
+            intent: intentResult,
+            interactive: intentResult.interactiveData,
+            contactsAndTokens: enhancedIntentService.getContactsAndTokensData()
+          },
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // For non-action messages, route to appropriate handler
+      if (intentResult.classification.type === 'strategy') {
+        // Handle strategy creation
+        const strategyResult = await this.handleStrategyMessage(message, userId);
+        return res.json({
+          success: true,
+          type: 'strategy',
+          data: {
+            intent: intentResult,
+            strategy: this.sanitizeBigInt(strategyResult)
+          },
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      if (intentResult.classification.type === 'information') {
+        // Handle information request
+        const infoResult = await this.handleInformationMessage(message, userId);
+        return res.json({
+          success: true,
+          type: 'information',
+          data: {
+            intent: intentResult,
+            information: infoResult
+          },
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Default response for unhandled cases
+      return res.json({
+        success: true,
+        type: 'general',
+        data: {
+          intent: intentResult,
+          message: 'I understand your message but need more context to help you properly.'
+        },
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      console.error('❌ Enhanced message processing failed:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+        type: 'processingError',
+        timestamp: new Date().toISOString()
+      });
+    }
+  };
+
+  /**
+   * Process interactive response from user
+   */
+  processInteractiveResponse = async (req, res) => {
+    try {
+      console.log('🔄 Processing interactive response');
+      
+      const { originalIntent, userResponses, userId } = req.body;
+
+      if (!originalIntent || !userResponses) {
+        return res.status(400).json({
+          success: false,
+          error: 'Original intent and user responses are required',
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Process the user's responses
+      console.log('📋 Processing interactive response with:', {
+        originalIntent: JSON.stringify(originalIntent, null, 2),
+        userResponses: JSON.stringify(userResponses, null, 2)
+      });
+      
+      const updatedIntent = await enhancedIntentService.processInteractiveResponse(
+        originalIntent,
+        userResponses
+      );
+      
+      console.log('✅ Updated intent result:', JSON.stringify(updatedIntent, null, 2));
+
+      // Check if we now have all required arguments
+      if (updatedIntent.isComplete && updatedIntent.classification.type === 'actions') {
+        console.log('✅ All arguments provided, executing action...');
+        
+        try {
+          const actionResult = await actionsProcessingService.executeAction(
+            updatedIntent.extraction.actionType,
+            updatedIntent.validation.resolved,
+            userId
+          );
+
+          return res.json({
+            success: true,
+            type: 'actionComplete',
+            data: {
+              intent: updatedIntent,
+              actionResult: this.sanitizeBigInt(actionResult)
+            },
+            timestamp: new Date().toISOString()
+          });
+
+        } catch (actionError) {
+          console.error('❌ Action execution failed:', actionError);
+          return res.json({
+            success: false,
+            type: 'actionError',
+            data: {
+              intent: updatedIntent,
+              error: actionError.message
+            },
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+
+      // If still missing arguments, return new interactive components
+      if (updatedIntent.interactiveData) {
+        return res.json({
+          success: true,
+          type: 'argumentRequest',
+          data: {
+            intent: updatedIntent,
+            interactive: updatedIntent.interactiveData,
+            contactsAndTokens: enhancedIntentService.getContactsAndTokensData()
+          },
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // This shouldn't happen, but handle gracefully
+      return res.json({
+        success: false,
+        type: 'unexpectedState',
+        data: {
+          intent: updatedIntent,
+          message: 'Unexpected state in interactive processing'
+        },
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      console.error('❌ Interactive response processing failed:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+        type: 'processingError',
+        timestamp: new Date().toISOString()
+      });
+    }
+  };
+
+  /**
+   * Get contacts and tokens data for frontend
+   */
+  getContactsAndTokens = async (req, res) => {
+    try {
+      const data = enhancedIntentService.getContactsAndTokensData();
+      
+      return res.json({
+        success: true,
+        data,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      console.error('❌ Failed to get contacts and tokens:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  };
 
   /**
    * Get router statistics and supported features
@@ -2210,6 +3070,160 @@ Create a detailed, actionable strategy that balances growth potential with appro
         message: 'Failed to get supported actions',
         error: error.message
       });
+    }
+  }
+
+  /**
+   * Count total tasks in action plan
+   * @param {Object} actionPlan - Action plan object
+   * @returns {Number} Total number of tasks
+   */
+  countTotalTasks(actionPlan) {
+    if (!actionPlan || !actionPlan.phases) return 0;
+    
+    return actionPlan.phases.reduce((total, phase) => {
+      return total + (phase.tasks ? phase.tasks.length : 0);
+    }, 0);
+  }
+
+  /**
+   * Extract token prices from market data
+   * @param {Object} marketData - Market data object
+   * @returns {Object} Object with token prices
+   */
+  extractTokenPrices(marketData) {
+    const prices = {};
+    if (marketData.topTokens) {
+      marketData.topTokens.forEach(token => {
+        if (token.symbol && token.priceUsd) {
+          prices[token.symbol] = token.priceUsd;
+        }
+      });
+    }
+    return prices;
+  }
+
+  /**
+   * Sanitize target price to ensure it's a valid number
+   * @param {any} targetPrice - The target price value from AI
+   * @param {string} tokenSymbol - Token symbol for context
+   * @param {Object} marketData - Market data for current price reference
+   * @returns {Number} Sanitized numeric target price
+   */
+  sanitizeTargetPrice(targetPrice, tokenSymbol, marketData) {
+    // If it's already a valid number, return it
+    if (typeof targetPrice === 'number' && !isNaN(targetPrice) && targetPrice > 0) {
+      return targetPrice;
+    }
+
+    // If it's a string that can be parsed as a number
+    if (typeof targetPrice === 'string') {
+      // Try to extract number from string
+      const numericMatch = targetPrice.match(/[\d.]+/);
+      if (numericMatch) {
+        const parsed = parseFloat(numericMatch[0]);
+        if (!isNaN(parsed) && parsed > 0) {
+          return parsed;
+        }
+      }
+
+      // Handle percentage-based targets
+      if (targetPrice.includes('%') || targetPrice.toLowerCase().includes('increase') || targetPrice.toLowerCase().includes('decrease')) {
+        const currentPrice = this.getCurrentTokenPrice(tokenSymbol, marketData);
+        if (currentPrice > 0) {
+          // Default to 10% increase if we can't parse the percentage
+          return currentPrice * 1.1;
+        }
+      }
+
+      // Handle descriptive targets like "double", "triple", etc.
+      if (targetPrice.toLowerCase().includes('double')) {
+        const currentPrice = this.getCurrentTokenPrice(tokenSymbol, marketData);
+        return currentPrice > 0 ? currentPrice * 2 : 1;
+      }
+      
+      if (targetPrice.toLowerCase().includes('triple')) {
+        const currentPrice = this.getCurrentTokenPrice(tokenSymbol, marketData);
+        return currentPrice > 0 ? currentPrice * 3 : 1;
+      }
+    }
+
+    // Fallback: use current market price * 1.1 (10% above current price)
+    const currentPrice = this.getCurrentTokenPrice(tokenSymbol, marketData);
+    return currentPrice > 0 ? currentPrice * 1.1 : 1;
+  }
+
+  /**
+   * Get current token price from market data
+   * @param {string} tokenSymbol - Token symbol
+   * @param {Object} marketData - Market data object
+   * @returns {Number} Current token price or 0 if not found
+   */
+  getCurrentTokenPrice(tokenSymbol, marketData) {
+    if (!tokenSymbol || !marketData.topTokens) return 0;
+    
+    const token = marketData.topTokens.find(t => 
+      t.symbol && t.symbol.toLowerCase() === tokenSymbol.toLowerCase()
+    );
+    
+    return token && token.priceUsd ? parseFloat(token.priceUsd) : 0;
+  }
+
+  /**
+   * Handle information requests
+   * @param {string} message - User message
+   * @param {string} userId - User ID
+   * @returns {Object} Information response
+   */
+  async handleInformationMessage(message, userId) {
+    try {
+      // Use the existing information processing
+      const result = await this.processInformation(message, {
+        type: 'information',
+        confidence: 0.8,
+        reasoning: 'Information request processed'
+      });
+      
+      return result;
+    } catch (error) {
+      console.error('Information handling error:', error);
+      return {
+        type: 'information',
+        result: {
+          answer: 'I apologize, but I encountered an error while processing your information request. Please try again.',
+          category: 'error'
+        },
+        status: 'error'
+      };
+    }
+  }
+
+  /**
+   * Handle strategy requests  
+   * @param {string} message - User message
+   * @param {string} userId - User ID
+   * @returns {Object} Strategy response
+   */
+  async handleStrategyMessage(message, userId) {
+    try {
+      // Use the existing strategy processing
+      const result = await this.processStrategy(message, {
+        type: 'strategy',
+        confidence: 0.8,
+        reasoning: 'Strategy request processed'
+      }, { userId });
+      
+      return result;
+    } catch (error) {
+      console.error('Strategy handling error:', error);
+      return {
+        type: 'strategy',
+        result: {
+          response: 'I apologize, but I encountered an error while processing your strategy request. Please try again.',
+          strategyType: 'error'
+        },
+        status: 'error'
+      };
     }
   }
 }

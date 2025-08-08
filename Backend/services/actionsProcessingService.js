@@ -1,6 +1,12 @@
 const Together = require('together-ai').default;
 const hederaAgentKitService = require('./hederaAgentKitService');
+const SaucerSwapService = require('./saucerSwapService');
+const ContactsTokensService = require('./contactsTokensService');
 const Agent = require('../models/Agent');
+
+// Create service instances
+const saucerSwapService = new SaucerSwapService();
+const contactsTokensService = new ContactsTokensService();
 
 // Initialize Together AI for actions processing
 let together;
@@ -76,26 +82,42 @@ class ActionsProcessingService {
       const validatedResult = this.validateActionResult(actionResult, message, classification);
       
       // Check if execution is requested and supported
-      if (options.execute && options.agentId && classification.actionSubtype === 'transfer') {
-        console.log('🚀 Executing transfer action...');
-        try {
-          const executionResult = await this.executeTransferAction(message, options.agentId, validatedResult);
-          validatedResult.execution = executionResult;
-          validatedResult.executionStatus = 'completed';
-        } catch (executionError) {
-          console.error('❌ Transfer execution failed:', executionError);
+      if (options.execute && options.agentId) {
+        if (classification.actionSubtype === 'transfer') {
+          console.log('🚀 Executing transfer action...');
+          try {
+            const executionResult = await this.executeTransferAction(message, options.agentId, validatedResult);
+            validatedResult.execution = executionResult;
+            validatedResult.executionStatus = 'completed';
+          } catch (executionError) {
+            console.error('❌ Transfer execution failed:', executionError);
+            validatedResult.execution = {
+              error: executionError.message,
+              status: 'failed'
+            };
+            validatedResult.executionStatus = 'failed';
+          }
+        } else if (classification.actionSubtype === 'swap') {
+          console.log('🔄 Executing swap action...');
+          try {
+            const executionResult = await this.executeSwapAction(message, options.agentId, validatedResult);
+            validatedResult.execution = executionResult;
+            validatedResult.executionStatus = 'completed';
+          } catch (executionError) {
+            console.error('❌ Swap execution failed:', executionError);
+            validatedResult.execution = {
+              error: executionError.message,
+              status: 'failed'
+            };
+            validatedResult.executionStatus = 'failed';
+          }
+        } else {
           validatedResult.execution = {
-            error: executionError.message,
-            status: 'failed'
+            message: `Execution not yet supported for ${classification.actionSubtype} actions`,
+            status: 'not_implemented'
           };
-          validatedResult.executionStatus = 'failed';
+          validatedResult.executionStatus = 'not_implemented';
         }
-      } else if (options.execute && classification.actionSubtype !== 'transfer') {
-        validatedResult.execution = {
-          message: `Execution not yet supported for ${classification.actionSubtype} actions`,
-          status: 'not_implemented'
-        };
-        validatedResult.executionStatus = 'not_implemented';
       } else {
         validatedResult.executionStatus = 'guidance_only';
       }
@@ -175,14 +197,15 @@ class ActionsProcessingService {
    * @returns {Object} System and user prompts
    */
   buildActionPrompt(message, actionSubtype, execute = false) {
-    const baseSystem = `You are a specialized crypto DeFi actions expert. Your job is to analyze user requests and provide detailed actionable instructions for blockchain operations on the SEI network.
+    const baseSystem = `You are a specialized crypto DeFi actions expert. Your job is to analyze user requests and provide detailed actionable instructions for blockchain operations on the Hedera network using SaucerSwap.
 
 IMPORTANT CONTEXT:
-- All operations are on SEI network
-- Supported tokens: BTC, ETH, SEI, USDC, USDT, DAI
-- Use DEX protocols for swaps
+- All operations are on Hedera network
+- Supported tokens: HBAR, USDC, USDT, SAUCE, WBTC, WETH
+- Use SaucerSwap V2 for swaps (integrated and ready for execution)
 - Always consider gas fees and slippage
 - Prioritize user safety and security
+- Real swap execution is available through SaucerSwap integration
 
 `;
 
@@ -231,14 +254,15 @@ Response format (METRICS-FOCUSED):
 }`,
 
       swap: `SWAP SPECIALIST:
-You help users swap tokens on DEX platforms efficiently.
+You help users swap tokens on SaucerSwap V2 efficiently with REAL EXECUTION capability.
 
 Key considerations:
-- Current market prices and slippage
-- Best DEX routes for optimal rates
-- Price impact warnings
-- MEV protection strategies
-- Timing recommendations
+- Current market prices and slippage on Hedera/SaucerSwap
+- SaucerSwap V2 routing for optimal rates  
+- Price impact warnings for large swaps
+- Gas fee estimation for Hedera network
+- Timing recommendations based on market conditions
+- IMPORTANT: Swaps will be ACTUALLY EXECUTED when user requests it
 
 Response format:
 {
@@ -627,11 +651,444 @@ Response format:
   }
 
   /**
+   * Execute swap action using SaucerSwap
+   * @param {string} message - User's message
+   * @param {string} agentId - Agent ID
+   * @param {Object} actionResult - Processed action result
+   * @returns {Object} Execution result
+   */
+  async executeSwapAction(message, agentId, actionResult) {
+    try {
+      console.log('🔍 Parsing swap request for execution...');
+      console.log('📝 Original message:', message);
+      
+      // Parse swap details from the message using SaucerSwap service
+      const swapDetails = await saucerSwapService.parseSwapIntentWithLLM(message);
+      console.log('📊 Parsed swap details:', JSON.stringify(swapDetails, null, 2));
+      
+      if (!swapDetails.isSwap) {
+        console.error('❌ Message not recognized as swap intent');
+        console.error('Message:', message);
+        console.error('Parse result:', swapDetails);
+        throw new Error(`Failed to parse swap details from message: "${message}". Parse result: ${JSON.stringify(swapDetails)}`);
+      }
+
+      // Validate required swap details
+      if (!swapDetails.fromToken || !swapDetails.toToken) {
+        console.error('❌ Missing required token information');
+        console.error('From token:', swapDetails.fromToken);
+        console.error('To token:', swapDetails.toToken);
+        throw new Error(`Missing token information. From: ${swapDetails.fromToken}, To: ${swapDetails.toToken}`);
+      }
+
+      // Get agent information
+      const agent = await Agent.findById(agentId);
+      if (!agent) {
+        throw new Error('Agent not found');
+      }
+
+      // Convert token symbols to contract addresses/IDs
+      const inputTokenId = this.resolveTokenId(swapDetails.fromToken);
+      const outputTokenId = this.resolveTokenId(swapDetails.toToken);
+
+      // Calculate amounts in smallest units
+      const decimals = this.getTokenDecimals(swapDetails.fromToken);
+      const amountIn = this.toSmallestUnit(swapDetails.amount || 1, decimals);
+      
+      // Calculate minimum amount out with slippage tolerance
+      const estimatedAmountOut = await this.estimateSwapOutput(
+        inputTokenId,
+        outputTokenId,
+        amountIn
+      );
+      
+      // Get recommended slippage based on token pair
+      const recommendedSlippage = saucerSwapService.getRecommendedSlippage(
+        swapDetails.fromToken, 
+        swapDetails.toToken
+      );
+      const slippageTolerance = swapDetails.slippageTolerance || recommendedSlippage;
+      
+      console.log(`💡 Using slippage tolerance: ${slippageTolerance}% (recommended: ${recommendedSlippage}%)`);
+      
+      const slippageMultiplier = (100 - slippageTolerance) / 100;
+      const amountOutMin = Math.floor(estimatedAmountOut * slippageMultiplier);
+
+      // Prepare swap parameters for SaucerSwap service
+      const swapParams = {
+        inputToken: swapDetails.fromToken,
+        outputToken: swapDetails.toToken,
+        amountIn: amountIn,
+        amountOut: estimatedAmountOut,
+        swapType: 'exactInput', // Default to exactInput
+        recipient: agent.hederaAccountId,
+        slippageTolerance: slippageTolerance
+      };
+
+      console.log('🔄 Executing swap with SaucerSwap:', swapParams);
+      console.log(agent,"......../////..")
+      // Get Hedera client for the agent
+      const hederaClient = await this.getHederaClientForAgent(agent);
+
+      // Execute the swap using SaucerSwap service
+      const swapResult = await saucerSwapService.executeSwap(swapParams, hederaClient);
+
+      console.log('✅ Swap executed successfully!');
+
+      return {
+        success: true,
+        swapDetails: swapResult,
+        parsedRequest: {
+          originalMessage: message,
+          extractedDetails: swapDetails,
+          inputToken: swapDetails.fromToken,
+          outputToken: swapDetails.toToken,
+          amount: swapDetails.amount
+        },
+        executionSummary: {
+          action: 'swap_execution',
+          transactionId: swapResult.transactionId,
+          swapType: swapResult.swapType,
+          inputAmount: swapParams.amountIn,
+          outputAmount: swapResult.actualAmountOut || swapResult.expectedAmountOut,
+          gasUsed: swapResult.gasUsed,
+          status: swapResult.success ? 'completed' : 'failed'
+        },
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('❌ Swap execution failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Resolve token symbol to contract address/ID using testnet swap tokens
+   * @param {string} tokenSymbol - Token symbol (e.g., 'HBAR', 'USDC')
+   * @returns {string} Token contract address or ID
+   */
+  resolveTokenId(tokenSymbol) {
+    try {
+      // Use ContactsTokensService to find token from testnet swap tokens
+      const tokenInfo = contactsTokensService.findToken(tokenSymbol, true); // forSwap = true
+      
+      if (tokenInfo && tokenInfo.id) {
+        console.log(`✅ Resolved token ${tokenSymbol} to ID: ${tokenInfo.id}`);
+        return tokenInfo.id;
+      }
+      
+      // Fallback to original hardcoded mapping for backwards compatibility
+      const tokenMap = {
+        'HBAR': 'HBAR', // Native token
+        'USDC': '0.0.456858', // USDC token ID on Hedera
+        'USDT': '0.0.681309', // USDT token ID on Hedera
+        'SAUCE': '0.0.731861', // SAUCE token ID on Hedera
+        'WBTC': '0.0.1456986', // Wrapped BTC on Hedera
+        'WETH': '0.0.1456986', // Wrapped ETH on Hedera (placeholder)
+      };
+
+      const fallbackId = tokenMap[tokenSymbol.toUpperCase()] || tokenSymbol;
+      console.log(`⚠️ Used fallback token mapping for ${tokenSymbol}: ${fallbackId}`);
+      return fallbackId;
+    } catch (error) {
+      console.error('❌ Error resolving token ID:', error);
+      // Return the original symbol as fallback
+      return tokenSymbol;
+    }
+  }
+
+  /**
+   * Get token decimals using testnet swap tokens
+   * @param {string} tokenSymbol - Token symbol
+   * @returns {number} Number of decimals
+   */
+  getTokenDecimals(tokenSymbol) {
+    try {
+      // Use ContactsTokensService to find token from testnet swap tokens
+      const tokenInfo = contactsTokensService.findToken(tokenSymbol, true); // forSwap = true
+      
+      if (tokenInfo && tokenInfo.decimals !== undefined) {
+        console.log(`✅ Found decimals for ${tokenSymbol}: ${tokenInfo.decimals}`);
+        return tokenInfo.decimals;
+      }
+      
+      // Fallback to original hardcoded mapping for backwards compatibility
+      const decimalsMap = {
+        'HBAR': 8,
+        'USDC': 6,
+        'USDT': 6,
+        'SAUCE': 6,
+        'WBTC': 8,
+        'WETH': 18
+      };
+
+      const fallbackDecimals = decimalsMap[tokenSymbol.toUpperCase()] || 6;
+      console.log(`⚠️ Used fallback decimals for ${tokenSymbol}: ${fallbackDecimals}`);
+      return fallbackDecimals;
+    } catch (error) {
+      console.error('❌ Error getting token decimals:', error);
+      // Default to 6 decimals as fallback
+      return 6;
+    }
+  }
+
+  /**
+   * Convert amount to smallest unit
+   * @param {number} amount - Amount in regular units
+   * @param {number} decimals - Number of decimals
+   * @returns {BigInt} Amount in smallest unit
+   */
+  toSmallestUnit(amount, decimals) {
+    return BigInt(Math.floor(amount * Math.pow(10, decimals)));
+  }
+
+  /**
+   * Estimate swap output (simplified)
+   * @param {string} inputToken - Input token ID
+   * @param {string} outputToken - Output token ID
+   * @param {BigInt} amountIn - Input amount
+   * @returns {number} Estimated output amount
+   */
+  async estimateSwapOutput(inputToken, outputToken, amountIn) {
+    try {
+      // This is a simplified estimation
+      // In production, you'd query SaucerSwap's quoter contract
+      
+      // Mock exchange rates (in practice, fetch from DEX)
+      const mockRates = {
+        'HBAR_USDC': 0.065, // 1 HBAR = 0.065 USDC
+        'USDC_HBAR': 15.38, // 1 USDC = 15.38 HBAR
+        'HBAR_SAUCE': 19.12, // 1 HBAR = 19.12 SAUCE
+        'SAUCE_HBAR': 0.052, // 1 SAUCE = 0.052 HBAR
+      };
+
+      const pairKey = `${inputToken}_${outputToken}`;
+      const rate = mockRates[pairKey] || 1;
+      
+      return Number(amountIn) * rate;
+    } catch (error) {
+      console.error('Error estimating swap output:', error);
+      return Number(amountIn); // Fallback 1:1 ratio
+    }
+  }
+
+  /**
    * Get supported actions list
    * @returns {Array} List of supported action types
    */
   getSupportedActions() {
     return [...this.supportedActions];
+  }
+
+  /**
+   * Get Hedera client for an agent
+   * @param {Object} agent - Agent object
+   * @returns {Object} Hedera client
+   */
+  async getHederaClientForAgent(agent) {
+    try {
+      // Use the Hedera agent kit service to get client for the agent
+      const { client } = await hederaAgentKitService.createAgentToolkit(agent._id);
+      return client;
+    } catch (error) {
+      console.error('Error creating Hedera client for agent:', error);
+      throw new Error('Failed to create Hedera client for agent');
+    }
+  }
+
+  /**
+   * Execute action directly (called from interactive response processing)
+   * @param {string} actionType - Type of action to execute
+   * @param {Object} resolvedArgs - Resolved arguments from validation
+   * @param {string} userId - User ID
+   * @returns {Object} Execution result
+   */
+  async executeAction(actionType, resolvedArgs, userId) {
+    try {
+      console.log('🚀 Executing action directly:', actionType);
+      console.log('📋 Resolved arguments:', resolvedArgs);
+      
+      // Get user's agent
+      if (!Agent) {
+        throw new Error('Agent model is not properly imported');
+      }
+      
+      const agent = await Agent.findOne({ userId: userId });
+      if (!agent) {
+        throw new Error('No agent found for this user');
+      }
+      
+      // Execute based on action type
+      switch (actionType) {
+        case 'transfer':
+          console.log('💸 Executing transfer action...');
+          
+          const transferResult = await hederaAgentKitService.transferToken({
+            fromAgentId: agent.hederaAccountId,
+            toAccountId: resolvedArgs.recipient,
+            tokenId: resolvedArgs.tokenId || null,
+            amount: parseFloat(resolvedArgs.amount),
+            memo: `Transfer from agent via interactive command`
+          });
+          
+          return {
+            success: true,
+            transactionDetails: transferResult,
+            actionType: 'transfer',
+            resolvedArgs: resolvedArgs,
+            timestamp: new Date().toISOString()
+          };
+          
+        default:
+          throw new Error(`Action type '${actionType}' not yet supported for direct execution`);
+      }
+      
+    } catch (error) {
+      console.error('❌ Direct action execution failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute swap action using already resolved token information
+   * @param {string} agentId - Agent ID
+   * @param {Object} resolvedArgs - Already resolved swap arguments
+   * @returns {Object} Execution result
+   */
+  async executeResolvedSwapAction(agentId, resolvedArgs) {
+    try {
+      console.log('🔄 Executing resolved swap action...');
+      console.log('🎯 Resolved args:', JSON.stringify(resolvedArgs, null, 2));
+
+      // Extract resolved token information
+      const fromTokenResolved = resolvedArgs.fromToken_resolved;
+      const toTokenResolved = resolvedArgs.toToken_resolved;
+      const amount = resolvedArgs.amount;
+
+      if (!fromTokenResolved || !toTokenResolved) {
+        throw new Error('Missing resolved token information');
+      }
+
+      console.log(`💱 Swap: ${amount} ${fromTokenResolved.symbol} → ${toTokenResolved.symbol}`);
+      console.log(`📋 From Token: ${fromTokenResolved.name} (${fromTokenResolved.id})`);
+      console.log(`📋 To Token: ${toTokenResolved.name} (${toTokenResolved.id})`);
+
+      // Get agent information
+      const agent = await Agent.findById(agentId);
+      if (!agent) {
+        throw new Error('Agent not found');
+      }
+
+      // Calculate amounts in smallest units
+      const fromDecimals = fromTokenResolved.decimals || 8;
+      const amountInSmallestUnit = BigInt(Math.floor(amount * Math.pow(10, fromDecimals)));
+
+      console.log(`💰 Amount: ${amount} ${fromTokenResolved.symbol} = ${amountInSmallestUnit} (smallest unit)`);
+
+      // Prepare swap parameters for SaucerSwap
+      const swapParams = {
+        inputToken: fromTokenResolved.id,
+        outputToken: toTokenResolved.id,
+        amountIn: amountInSmallestUnit,
+        amountOut: null, // Will be calculated by the router
+        swapType: 'exactInput',
+        recipient: agent.walletAddress,
+        slippageTolerance: 2.0, // 2% default slippage
+        deadline: Math.floor(Date.now() / 1000) + 1200 // 20 minutes from now
+      };
+
+      console.log('📝 Swap parameters:', JSON.stringify(swapParams, null, 2));
+
+      // Get agent's Hedera client
+      const hederaClient = await hederaAgentKitService.getClientByAgent(agent);
+      if (!hederaClient) {
+        throw new Error('Failed to get Hedera client for agent');
+      }
+
+      // Execute the swap
+      console.log('🚀 Executing swap through SaucerSwap...');
+      const swapResult = await saucerSwapService.executeSwap(swapParams, hederaClient);
+
+      console.log('✅ Swap execution completed:', swapResult);
+
+      return {
+        success: true,
+        transactionId: swapResult.transactionId,
+        swapDetails: {
+          fromToken: fromTokenResolved.symbol,
+          toToken: toTokenResolved.symbol,
+          amountIn: amount,
+          amountOut: swapResult.amountOut,
+          fromTokenId: fromTokenResolved.id,
+          toTokenId: toTokenResolved.id
+        },
+        execution: {
+          status: 'completed',
+          timestamp: new Date().toISOString(),
+          method: 'saucerswap'
+        }
+      };
+
+    } catch (error) {
+      console.error('❌ Resolved swap execution failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute action based on type
+   * @param {string} actionType - Type of action to execute
+   * @param {Object} resolvedArgs - Resolved action arguments
+   * @param {string} userId - User ID for agent lookup
+   * @returns {Object} Execution result
+   */
+  async executeAction(actionType, resolvedArgs, userId) {
+    try {
+      console.log(`🚀 Executing ${actionType} action with resolved args:`, resolvedArgs);
+
+      // Find an agent for this user (for now, use the first available agent)
+      const userAgents = await Agent.find({ userId: userId, isActive: true }).limit(1);
+      
+      if (!userAgents || userAgents.length === 0) {
+        throw new Error('No active agents found for user. Please create an agent first.');
+      }
+      
+      const agentId = userAgents[0]._id.toString();
+      console.log(`👤 Using agent ${agentId} for execution`);
+
+      // Route to appropriate execution method based on action type
+      switch (actionType.toLowerCase()) {
+        case 'transfer':
+          return await this.executeTransferAction(resolvedArgs.originalMessage || 'transfer', agentId, { args: resolvedArgs });
+          
+        case 'swap':
+          // Use resolved token information for efficient swap execution
+          return await this.executeResolvedSwapAction(agentId, resolvedArgs);
+          
+        case 'stake':
+          throw new Error('Stake action execution not yet implemented');
+          
+        case 'createagent':
+          throw new Error('Agent creation action execution not yet implemented');
+          
+        case 'associatetoken':
+          throw new Error('Token association action execution not yet implemented');
+          
+        case 'createtopic':
+          throw new Error('Topic creation action execution not yet implemented');
+          
+        case 'sendmessage':
+          throw new Error('Message sending action execution not yet implemented');
+          
+        default:
+          throw new Error(`Action type '${actionType}' not yet supported for direct execution`);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Action execution failed for ${actionType}:`, error);
+      throw error;
+    }
   }
 
   /**
