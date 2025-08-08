@@ -47,21 +47,28 @@ export default function LandingPage() {
   return (
     <main className="min-h-screen bg-white text-gray-900 dark:bg-neutral-950 dark:text-neutral-100">
       {/* Header with section links */}
-      <header className="fixed inset-x-0 top-0 z-40 border-b border-orange-100/60 bg-white/70 backdrop-blur dark:border-orange-400/10 dark:bg-neutral-900/60">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
-          <Link href="#hero" className="flex items-center gap-2">
-            <div className="relative h-16 w-16 overflow-hidden rounded-lg ring-1 ring-orange-300/50">
-              <Image src="/images/logo.png" alt="Mariposa" fill sizes="200px" />
+            <header className="fixed inset-x-0 top-0 z-50 border-b border-orange-100/60 bg-white/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:border-orange-400/10 dark:bg-neutral-900/80">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-2">
+          <Link href="#hero" className="flex items-center gap-3">
+            <div className="relative h-[100px] w-[200px] overflow-hidden">
+              <Image 
+                src="/images/logo.png" 
+                alt="Mariposa" 
+                fill
+                sizes="200px"
+                className="object-contain transition-transform duration-200 hover:scale-105 drop-shadow-sm" 
+                priority 
+              />
             </div>
-          </Link>
-          <nav className="hidden items-center gap-4 text-sm sm:flex">
-            <Link href="#chat" className={orangeLink}>Chat</Link>
-            <Link href="#how" className={orangeLink}>How it works</Link>
-            <Link href="#automation" className={orangeLink}>Automation</Link>
-            <Link href="#capabilities" className={orangeLink}>What you can do</Link>
-            <Link href="#hedera" className={orangeLink}>Built on Hedera</Link>
-            <Link href="#pricing" className={orangeLink}>Pricing</Link>
-            <Link href="/dashboard" className={`${orangeButton} ml-2 px-4 py-2`}>Launch</Link>
+            </Link>
+          <nav className="hidden items-center gap-5 text-sm sm:flex">
+            <Link href="#chat" className="text-gray-700 hover:text-orange-700 hover:underline underline-offset-4 dark:text-neutral-200">Chat</Link>
+            <Link href="#how" className="text-gray-700 hover:text-orange-700 hover:underline underline-offset-4 dark:text-neutral-200">How it works</Link>
+            <Link href="#automation" className="text-gray-700 hover:text-orange-700 hover:underline underline-offset-4 dark:text-neutral-200">Automation</Link>
+            <Link href="#capabilities" className="text-gray-700 hover:text-orange-700 hover:underline underline-offset-4 dark:text-neutral-200">What you can do</Link>
+            <Link href="#hedera" className="text-gray-700 hover:text-orange-700 hover:underline underline-offset-4 dark:text-neutral-200">Built on Hedera</Link>
+            <Link href="#pricing" className="text-gray-700 hover:text-orange-700 hover:underline underline-offset-4 dark:text-neutral-200">Pricing</Link>
+            <Link href="/dashboard" className={`${orangeButton} ml-3 px-4 py-2`}>Launch</Link>
           </nav>
         </div>
       </header>
@@ -90,7 +97,7 @@ export default function LandingPage() {
       />
 
       {/* Hero */}
-      <section id="hero" className="relative overflow-hidden">
+      <section id="hero" className="relative overflow-hidden pt-28">
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-orange-500/5 via-transparent to-transparent" />
         <div className="mx-auto max-w-7xl px-6 pt-24 pb-16 sm:pt-28">
           <div className="grid items-center gap-10 md:grid-cols-2">
