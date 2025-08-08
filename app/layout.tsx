@@ -7,7 +7,7 @@ const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'Mariposa - AI-Powered Crypto Trading',
-  description: 'Trade cryptocurrencies on SEI network with AI-powered agents and DragonSwap integration',
+  description: 'Trade cryptocurrencies on Hedera network with AI-powered agents and DragonSwap integration',
 };
 
 export default function RootLayout({
