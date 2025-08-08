@@ -236,14 +236,18 @@ export class AuthService {
         name: agentResult.data.user.name,
         email: agentResult.data.user.email,
         userType: agentResult.data.user.userType,
-        createdAt: agentResult.data.user.createdAt
+        createdAt: agentResult.data.user.createdAt,
+        walletAddress: agentResult.data.wallet?.accountId || '',
+        walletId: agentResult.data.agent?._id || ''
       } : {
         // Fallback if user data is missing
         id: data.email,
         name: data.name,
         email: data.email,
         userType: 'human',
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        walletAddress: agentResult.data.wallet?.accountId || '',
+        walletId: agentResult.data.agent?._id || ''
       };
 
       // Generate token for the user
