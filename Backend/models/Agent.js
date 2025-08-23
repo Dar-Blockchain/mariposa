@@ -18,17 +18,36 @@ const agentSchema = new mongoose.Schema({
     required: true,
     index: true
   },
-  hederaAccountId: {
+  seiAddress: {
     type: String,
     index: true,
     sparse: true
   },
-  hederaPrivateKey: {
+  seiPrivateKey: {
     type: String,
     select: false // Don't return this field by default for security
   },
-  hederaPublicKey: {
-    type: String
+  agentUuid: {
+    type: String,
+    unique: true,
+    sparse: true
+  },
+  agentType: {
+    type: String,
+    enum: ['general', 'trading', 'defi', 'nft'],
+    default: 'general'
+  },
+  configuration: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  lastInteraction: {
+    type: Date,
+    default: Date.now
   },
   createdAt: {
     type: Date,
@@ -54,8 +73,9 @@ agentSchema.methods.getInfo = function() {
   return {
     name: this.name,
     description: this.description,
-    hederaAccountId: this.hederaAccountId,
-    hederaPublicKey: this.hederaPublicKey,
+    seiAddress: this.seiAddress,
+    agentType: this.agentType,
+    configuration: this.configuration,
     createdAt: this.createdAt
   };
 };
@@ -64,7 +84,7 @@ agentSchema.methods.getInfo = function() {
 agentSchema.statics.getAllAgents = async function() {
   return await this.find()
     .sort({ createdAt: -1 })
-    .select('-__v -hederaPrivateKey');
+    .select('-__v -seiPrivateKey');
 };
 
 module.exports = mongoose.model('Agent', agentSchema); 

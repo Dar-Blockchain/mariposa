@@ -1,0 +1,105 @@
+{
+    "success": true,
+    "data": {
+        "classification": {
+            "type": "information",
+            "confidence": 0.8,
+            "reasoning": "The user is asking for a recommendation, which implies they are looking for information about existing tokens on the SEI-EVM network.",
+            "keywords": [
+                "recommend",
+                "tokens",
+                "sei-evm",
+                "network"
+            ],
+            "actionSubtype": null
+        },
+        "processing": {
+            "type": "information",
+            "result": {
+                "requestType": "token_specific",
+                "analysis": {
+                    "marketOverview": {
+                        "summary": "The broader cryptocurrency market remains neutral with mixed sentiment, while the SEI-EVM network is still in its early stages with limited liquidity and trading activity.",
+                        "totalMarketCap": 0,
+                        "volume24h": 0,
+                        "activeTokens": 0,
+                        "marketChange24h": 0,
+                        "sentiment": "neutral"
+                    },
+                    "keyMetrics": {
+                        "avgPrice": 0,
+                        "avgChange24h": 0,
+                        "volatilityIndex": 0,
+                        "liquidityScore": 20,
+                        "adoptionRate": 5
+                    },
+                    "technicalSignals": {
+                        "trend": "sideways",
+                        "strength": 30,
+                        "support": 0,
+                        "resistance": 0,
+                        "rsi": 50,
+                        "volume": 0
+                    },
+                    "fundamentalScore": {
+                        "ecosystemHealth": 40,
+                        "developmentActivity": 60,
+                        "partnershipStrength": 20,
+                        "adoptionGrowth": 10,
+                        "overallScore": 32.5
+                    },
+                    "keyInsights": [
+                        "Network showing moderate trading activity",
+                        "0 tokens actively trading with established liquidity",
+                        "Market focus on SEI"
+                    ]
+                },
+                "recommendations": [
+                    {
+                        "token": "SEI",
+                        "action": "WATCH",
+                        "confidence": 60,
+                        "targetPrice": 0,
+                        "currentPrice": 0,
+                        "upside": 0,
+                        "riskScore": 70,
+                        "timeframe": "1-3 months",
+                        "reasoning": "Limited liquidity and pending due diligence make it essential to monitor SEI's development and market activity before making investment decisions."
+                    }
+                ],
+                "marketContext": {
+                    "dataSource": "real-time_crypto_markets",
+                    "lastUpdated": "2025-08-21T14:55:49.922Z",
+                    "tokensAnalyzed": 1,
+                    "aiModel": "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
+                },
+                "actionableInsights": [
+                    "Monitor network ecosystem developments and protocol updates",
+                    "Consider dollar-cost averaging for long-term positions",
+                    "Set up price alerts for key support and resistance levels"
+                ],
+                "riskWarnings": [
+                    "Cryptocurrency investments carry high volatility and risk of total loss",
+                    "Some tokens may have limited liquidity compared to major cryptocurrencies",
+                    "Regulatory changes could impact token availability and trading"
+                ],
+                "nextSteps": [
+                    "Research specific tokens mentioned in analysis",
+                    "Review your risk tolerance and investment timeline",
+                    "Consider starting with small position sizes"
+                ]
+            },
+            "status": "completed",
+            "processingMethod": "ai_powered_market_analysis",
+            "confidence": "medium"
+        },
+        "metadata": {
+            "originalMessage": "recommend me some tokens on sei-evm netwoek",
+            "userId": "68a65868e48adfaf201064c6",
+            "agentId": "68a65868e48adfaf201064c9",
+            "processingTime": "29993ms",
+            "timestamp": "2025-08-21T14:56:18.417Z",
+            "routerVersion": "1.0.0"
+        }
+    }
+}

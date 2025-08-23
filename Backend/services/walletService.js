@@ -2,37 +2,46 @@ const { ethers } = require('ethers');
 const Wallet = require('../models/Wallet');
 
 class WalletService {
+  constructor() {
+    this.seiRpcUrl = process.env.SEI_RPC_URL || 'https://evm-rpc.sei-apis.com';
+    this.chainId = 1329; // SEI mainnet
+    this.provider = new ethers.JsonRpcProvider(this.seiRpcUrl);
+  }
+
   /**
-   * Generate a new wallet for an agent
+   * Generate a new SEI EVM wallet for an agent
    * @param {Object} agentData - Agent information
    * @returns {Object} Generated wallet data
    */
   static async generateWallet(agentData) {
     try {
-      console.log(`🏦 GENERATING WALLET FOR AGENT: ${agentData.name}`);
+      console.log(`🏦 GENERATING SEI EVM WALLET FOR AGENT: ${agentData.name}`);
       
-      // Generate random wallet
+      // Generate random wallet compatible with SEI EVM
       const randomWallet = ethers.Wallet.createRandom();
       
       // Get wallet class based on strategy
       const walletClass = Wallet.getWalletClass(agentData.primaryStrategy);
       
-      console.log(`📱 Wallet Address: ${randomWallet.address}`);
+      console.log(`📱 SEI EVM Address: ${randomWallet.address}`);
       console.log(`🏷️  Wallet Class: ${walletClass}`);
+      console.log(`🌊 Network: SEI EVM (Chain ID: 1329)`);
       console.log(`🔐 Private Key Generated (encrypted storage)`);
       
       const walletData = {
         address: randomWallet.address,
         privateKey: randomWallet.privateKey,
         mnemonic: randomWallet.mnemonic?.phrase,
-        walletClass: walletClass
+        walletClass: walletClass,
+        network: 'sei',
+        chainId: 1329
       };
       
       return walletData;
       
     } catch (error) {
-      console.error('❌ Error generating wallet:', error);
-      throw new Error(`Failed to generate wallet: ${error.message}`);
+      console.error('❌ Error generating SEI wallet:', error);
+      throw new Error(`Failed to generate SEI wallet: ${error.message}`);
     }
   }
 
@@ -177,25 +186,97 @@ class WalletService {
   }
 
   /**
-   * Generate SEI network compatible wallet
-   * @param {Object} agentData - Agent information
-   * @returns {Object} SEI wallet data
+   * Get wallet balance from SEI network
+   * @param {String} walletId - Wallet ID
+   * @returns {Object} Balance information
    */
-  static async generateSEIWallet(agentData) {
+  static async getWalletBalanceFromNetwork(walletId) {
     try {
-      // For now, use Ethereum-compatible addresses since SEI supports EVM
-      // In future, add specific SEI wallet generation
-      const walletData = await this.generateWallet(agentData);
+      const wallet = await Wallet.findById(walletId);
+      if (!wallet) throw new Error('Wallet not found');
       
-      // Add SEI-specific configurations
-      walletData.network = 'sei';
-      walletData.chainId = 1329; // SEI mainnet chain ID
+      const service = new WalletService();
       
-      return walletData;
+      // Get SEI balance
+      const seiBalance = await service.provider.getBalance(wallet.walletAddress);
+      
+      return {
+        walletId: walletId,
+        address: wallet.walletAddress,
+        seiBalance: ethers.formatEther(seiBalance),
+        seiBalanceWei: seiBalance.toString(),
+        network: 'sei',
+        chainId: 1329,
+        lastUpdated: new Date()
+      };
       
     } catch (error) {
-      console.error('Error generating SEI wallet:', error);
-      throw new Error(`Failed to generate SEI wallet: ${error.message}`);
+      console.error('Error fetching wallet balance from network:', error);
+      throw new Error(`Failed to fetch network balance: ${error.message}`);
+    }
+  }
+
+  /**
+   * Create wallet for user (SEI EVM)
+   * @param {String} userId - User ID
+   * @param {String} userName - User name
+   * @param {Object} walletData - Wallet data
+   * @param {Number} initialBalance - Initial balance in SEI
+   * @returns {Object} Created wallet
+   */
+  static async createUserWallet(userId, userName, walletData, initialBalance = 0) {
+    try {
+      console.log(`💾 CREATING SEI EVM WALLET FOR USER: ${userName}`);
+      
+      const wallet = new Wallet({
+        ownerId: userId,
+        ownerType: 'user',
+        userId: userId,
+        userName: userName,
+        walletAddress: walletData.address,
+        encryptedPrivateKey: walletData.privateKey, // Will be encrypted by pre-save hook
+        walletClass: walletData.walletClass || 'trading',
+        network: 'sei',
+        balance: {
+          native: initialBalance
+        },
+        portfolioValue: {
+          initial: initialBalance,
+          current: initialBalance,
+          peak: initialBalance
+        }
+      });
+      
+      const savedWallet = await wallet.save();
+      console.log(`✅ USER WALLET SAVED WITH ID: ${savedWallet._id}`);
+      
+      return savedWallet;
+      
+    } catch (error) {
+      console.error('❌ Error creating user wallet:', error);
+      throw new Error(`Failed to create user wallet: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update wallet balances from SEI network
+   * @param {String} walletId - Wallet ID
+   * @returns {Object} Updated wallet
+   */
+  static async syncWalletWithNetwork(walletId) {
+    try {
+      const networkBalance = await this.getWalletBalanceFromNetwork(walletId);
+      
+      const balanceData = {
+        native: parseFloat(networkBalance.seiBalance),
+        tokens: [] // TODO: Add token balance fetching
+      };
+      
+      return await this.updateBalance(walletId, balanceData);
+      
+    } catch (error) {
+      console.error('Error syncing wallet with network:', error);
+      throw new Error(`Failed to sync wallet: ${error.message}`);
     }
   }
 }

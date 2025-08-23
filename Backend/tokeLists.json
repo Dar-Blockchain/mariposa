@@ -1,0 +1,93 @@
+{
+  "name": "SEI EVM Token List",
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "logoURI": "https://sei.io/logo.png",
+  "keywords": ["sei", "evm", "defi", "tokens"],
+  "tokens": [
+    {
+      "chainId": 1329,
+      "address": "0x0000000000000000000000000000000000000000",
+      "symbol": "SEI",
+      "name": "SEI",
+      "decimals": 18,
+      "logoURI": "https://sei.io/logo.png",
+      "tags": ["native"]
+    },
+    {
+      "chainId": 1329,
+      "address": "0xE30feDd158A2e3b13e9badaeABaFc5516e963E83",
+      "symbol": "WSEI",
+      "name": "Wrapped SEI",
+      "decimals": 18,
+      "logoURI": "https://sei.io/wsei.png",
+      "tags": ["wrapped"]
+    },
+    {
+      "chainId": 1329,
+      "address": "0x3894085Ef7Ff0f0aeDf52E2A2704928d1Ec074F1",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "logoURI": "https://cryptologos.cc/logos/usd-coin-usdc-logo.png",
+      "tags": ["stablecoin"]
+    },
+    {
+      "chainId": 1329,
+      "address": "0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392",
+      "symbol": "USDC.n",
+      "name": "Native USDC",
+      "decimals": 6,
+      "logoURI": "https://cryptologos.cc/logos/usd-coin-usdc-logo.png",
+      "tags": ["stablecoin", "native"]
+    },
+    {
+      "chainId": 1329,
+      "address": "0x2b9D3F168905067D88d93F094C938BACEe02b0cB",
+      "symbol": "WETH",
+      "name": "Wrapped Ethereum",
+      "decimals": 18,
+      "logoURI": "https://cryptologos.cc/logos/ethereum-eth-logo.png",
+      "tags": ["wrapped"]
+    },
+    {
+      "chainId": 1329,
+      "address": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+      "symbol": "WBTC",
+      "name": "Wrapped Bitcoin",
+      "decimals": 8,
+      "logoURI": "https://cryptologos.cc/logos/wrapped-bitcoin-wbtc-logo.png",
+      "tags": ["wrapped"]
+    },
+    {
+      "chainId": 1329,
+      "address": "0x1234567890123456789012345678901234567890",
+      "symbol": "USDT",
+      "name": "Tether USD",
+      "decimals": 6,
+      "logoURI": "https://cryptologos.cc/logos/tether-usdt-logo.png",
+      "tags": ["stablecoin"]
+    },
+    {
+      "chainId": 1329,
+      "address": "0xAbCdEf0123456789012345678901234567890123",
+      "symbol": "ATOM",
+      "name": "Cosmos",
+      "decimals": 18,
+      "logoURI": "https://cryptologos.cc/logos/cosmos-atom-logo.png",
+      "tags": ["cosmos", "ibc"]
+    },
+    {
+      "chainId": 1329,
+      "address": "0x9876543210987654321098765432109876543210",
+      "symbol": "OSMO",
+      "name": "Osmosis",
+      "decimals": 18,
+      "logoURI": "https://cryptologos.cc/logos/osmosis-osmo-logo.png",
+      "tags": ["cosmos", "defi", "ibc"]
+    }
+  ]
+}

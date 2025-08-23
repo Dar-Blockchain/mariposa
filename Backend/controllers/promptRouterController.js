@@ -1,10 +1,11 @@
 const { validationResult } = require('express-validator');
 const messageClassificationService = require('../services/messageClassificationService');
 const actionsProcessingService = require('../services/actionsProcessingService');
-const hederaTokenService = require('../services/hederaTokenService');
+const seiAgentService = require('../services/seiAgentService');
 const EnhancedIntentService = require('../services/enhancedIntentService');
 const Agent = require('../models/Agent');
 const { fetchMarketData } = require('../utils/marketData');
+const MCPMarketDataService = require('../services/mcpMarketDataService');
 
 // Initialize Together AI for information processing
 let Together;
@@ -34,6 +35,23 @@ if (Together && process.env.TOGETHER_API_KEY) {
 
 // Initialize Enhanced Intent Service
 const enhancedIntentService = new EnhancedIntentService();
+
+// Initialize MCP Market Data Service
+let mcpMarketDataService = null;
+try {
+  mcpMarketDataService = new MCPMarketDataService();
+  console.log('🔄 MCP Market Data Service created, initializing connection...');
+  
+  // Initialize the service asynchronously
+  mcpMarketDataService.initialize().then(() => {
+    console.log('✅ MCP Market Data Service initialized and connected');
+  }).catch((initError) => {
+    console.warn('⚠️ MCP Market Data Service initialization failed:', initError.message);
+    mcpMarketDataService = null; // Disable if initialization fails
+  });
+} catch (error) {
+  console.warn('⚠️ MCP Market Data Service creation failed:', error.message);
+}
 
 class PromptRouterController {
   /**
@@ -91,6 +109,7 @@ class PromptRouterController {
         if (!Agent) {
           throw new Error('Agent model is not properly imported');
         }
+        console.log('🔍 Searching for agent with userId:', userId);
         const agent = await Agent.findOne({ userId: userId });
         if (!agent) {
           throw new Error('No agent found for this user');
@@ -117,19 +136,73 @@ class PromptRouterController {
       switch (classification.type) {
         case 'actions':
           console.log('⚡ Layer 2: Processing with Actions LLM...');
-          const actionOptions = { execute, agentId };
-          processingResult = await this.processActions(message, classification, actionOptions);
+          
+          // Special routing for transfer actions
+          if (classification.actionSubtype === 'transfer') {
+            console.log('💸 Transfer detected - using Enhanced Transfer Service');
+            
+            const EnhancedTransferService = require('../services/enhancedTransferService');
+            const transferService = new EnhancedTransferService();
+            
+            const transferResult = await transferService.processTransferRequest(message, userId, agentId);
+            
+            processingResult = {
+              success: transferResult.success,
+              type: 'transfer',
+              status: transferResult.status,
+              result: transferResult,
+              timestamp: new Date().toISOString()
+            };
+          } else {
+            const actionOptions = { execute, agentId, userId };
+            processingResult = await this.processActions(message, classification, actionOptions);
+          }
           break;
           
         case 'strategy':
-          console.log('📈 Layer 2: Processing strategy with real-time market data...');
-          const strategyOptions = { userId, agentId, execute: execute };
+          console.log('📈 Layer 2: Processing strategy with enhanced market intelligence...');
+          
+          // Get comprehensive market intelligence for strategy
+          const networkMentions = this.extractNetworkMentions(message);
+          const targetNetwork = networkMentions.length > 0 ? networkMentions[0] : 'sei-evm';
+          const marketIntelligence = await this.getComprehensiveMarketIntelligence(targetNetwork, message);
+          
+          const strategyOptions = { 
+            userId, 
+            agentId, 
+            execute: execute,
+            marketIntelligence: marketIntelligence,
+            enhancedData: true
+          };
           processingResult = await this.processStrategy(message, classification, strategyOptions);
+          
+          // Enhance result with market intelligence
+          if (processingResult && processingResult.result) {
+            processingResult.result.marketIntelligence = marketIntelligence;
+            processingResult.result.networkAnalyzed = targetNetwork;
+          }
           break;
           
         case 'information':
-          console.log('ℹ️  Layer 2: Information processing (placeholder)...');
+          console.log('ℹ️  Layer 2: Information processing with comprehensive market data...');
+          
+          // Get comprehensive market intelligence for information
+          const infoNetworkMentions = this.extractNetworkMentions(message);
+          const infoTargetNetwork = infoNetworkMentions.length > 0 ? infoNetworkMentions[0] : 'sei-evm';
+          const infoMarketIntelligence = await this.getComprehensiveMarketIntelligence(infoTargetNetwork, message);
+          
           processingResult = await this.processInformation(message, classification);
+          
+          // Enhance result with market intelligence
+          if (processingResult && processingResult.result) {
+            processingResult.result.marketIntelligence = infoMarketIntelligence;
+            processingResult.result.networkAnalyzed = infoTargetNetwork;
+            processingResult.result.enhancedFeatures = {
+              newPoolsDetection: true,
+              newTokensDiscovery: true,
+              trendingAnalysis: true
+            };
+          }
           break;
           
         case 'feedbacks':
@@ -251,21 +324,21 @@ class PromptRouterController {
       // Get comprehensive REAL-TIME market data for strategy analysis
       let marketData = {};
       try {
-        if (hederaTokenService) {
-          console.log('🌊 Fetching real-time Hedera market data...');
-          const topTokens = hederaTokenService.getTopTokens ? hederaTokenService.getTopTokens(50) : [];
-          const hederaStats = hederaTokenService.getStats ? hederaTokenService.getStats() : {};
+        if (seiAgentService) {
+          console.log('🌊 Fetching real-time SEI market data...');
+          const topTokens = seiAgentService.getTopTokens ? seiAgentService.getTopTokens(50) : [];
+          const seiStats = seiAgentService.getStats ? seiAgentService.getStats() : {};
           
           // Get specific real-time data for mentioned tokens
           const strategyTokens = [];
           for (const tokenSymbol of tokenMentions) {
             try {
-              const searchResults = hederaTokenService.searchTokens ? hederaTokenService.searchTokens(tokenSymbol) : [];
+              const searchResults = seiAgentService.searchTokens ? seiAgentService.searchTokens(tokenSymbol) : [];
               if (searchResults.length > 0) {
                 const tokenInfo = searchResults[0];
                 // Get live market data for more accurate analysis
-                const liveData = await hederaTokenService.getLiveTokenData(tokenInfo.id);
-                const analysis = hederaTokenService.analyzeToken ? await hederaTokenService.analyzeToken(tokenInfo.id) : null;
+                const liveData = await seiAgentService.getLiveTokenData(tokenInfo.id);
+                const analysis = seiAgentService.analyzeToken ? await seiAgentService.analyzeToken(tokenInfo.id) : null;
                 strategyTokens.push({
                   token: tokenInfo,
                   liveData: liveData?.success ? liveData.data : null,
@@ -280,7 +353,7 @@ class PromptRouterController {
           marketData = {
             topTokens,
             strategyTokens,
-            hederaStats,
+            seiStats,
             marketCap: topTokens.reduce((sum, t) => sum + (parseFloat(t.marketCap) || 0), 0),
             totalVolume: topTokens.reduce((sum, t) => sum + (parseFloat(t.volume24h) || 0), 0),
             avgPrice: topTokens.length > 0 ? topTokens.reduce((sum, t) => sum + (parseFloat(t.priceUsd) || 0), 0) / topTokens.length : 0,
@@ -302,7 +375,7 @@ class PromptRouterController {
         marketData = { 
           topTokens: [], 
           strategyTokens: [], 
-          hederaStats: {}, 
+          seiStats: {}, 
           marketCap: 0, 
           totalVolume: 0,
           avgPrice: 0,
@@ -426,7 +499,7 @@ class PromptRouterController {
           marketDataUsed: {
             tokensAnalyzed: marketData.topTokens?.length || 0,
             realTimeData: true,
-            dataSource: 'hederaTokenService'
+            dataSource: 'seiAgentService'
           }
         },
         status: 'completed',
@@ -448,9 +521,9 @@ class PromptRouterController {
             'Specify your investment goals (growth, income, stability)',
             'Mention your risk tolerance (low, medium, high)',
             'Include your investment timeline (short, medium, long-term)',
-            'List specific tokens you\'re considering (HBAR, SAUCE, USDC)'
+            'List specific tokens you\'re considering (SEI, USDC, WBTC)'
           ],
-          availableTokens: hederaTokenService ? hederaTokenService.getTopTokens(5).map(t => t.symbol) : ['HBAR', 'SAUCE', 'USDC']
+          availableTokens: seiAgentService ? seiAgentService.getTopTokens(5).map(t => t.symbol) : ['SEI', 'USDC', 'WBTC']
         },
         status: 'error',
         processingMethod: 'error_fallback'
@@ -493,127 +566,317 @@ class PromptRouterController {
       const tokenMentions = this.extractTokenMentions(message);
       const requestType = this.classifyInformationRequest(message);
       
-      // Fetch comprehensive market data using updated utility (includes GeckoTerminal for HBAR)
-      console.log('📊 Fetching comprehensive market data with GeckoTerminal integration...');
+      // Fetch comprehensive market data using MCP client
+      console.log('📊 [INFORMATION] Starting market data fetch...');
+      console.log('🔍 [INFORMATION] Data source priority: 1) MCP Server -> 2) Fallback API -> 3) Static Data');
       let marketData = {};
       
       try {
-        // First, fetch real-time market data from our updated utility
-        console.log('🦎 Fetching market data from CoinGecko + GeckoTerminal...');
-        const realTimeMarketData = await fetchMarketData(['BTC', 'ETH', 'HBAR', 'USDC', 'USDT', 'DAI', 'LINK', 'MATIC']);
-        
-        // Get comprehensive market data from Hedera token service for additional tokens
-        let topTokens = [];
-        let hederaStats = {};
-        
-        if (hederaTokenService) {
-          console.log('🔍 Fetching additional Hedera token data...');
-          topTokens = hederaTokenService.getTopTokens ? hederaTokenService.getTopTokens(50) : [];
-          hederaStats = hederaTokenService.getStats ? hederaTokenService.getStats() : {};
+        if (mcpMarketDataService) {
+          console.log('✅ [INFORMATION] MCP Market Data Service available - checking connection...');
           
-          // Override HBAR data with real-time data from our utility
-          if (realTimeMarketData.tokens.HBAR) {
-            console.log('✅ Overriding HBAR data with GeckoTerminal data...');
-            const hbarFromGecko = realTimeMarketData.tokens.HBAR;
+          // Ensure the service is initialized before use
+          if (!mcpMarketDataService.isConnected) {
+            console.log('🔄 [INFORMATION] MCP Service not connected, attempting initialization...');
+            try {
+              await mcpMarketDataService.initialize();
+              console.log('✅ [INFORMATION] MCP Service initialized successfully');
+            } catch (initError) {
+              console.warn('❌ [INFORMATION] MCP Service initialization failed:', initError.message);
+              throw new Error(`MCP service initialization failed: ${initError.message}`);
+            }
+          }
+          
+          console.log('🔮 [INFORMATION] DATA SOURCE: MCP Server (market-mcp) via HTTP API');
+          
+          // Check if this is a SEI-specific request
+          const isSEIRequest = message.toLowerCase().includes('sei') || 
+                              tokenMentions.some(token => token.toLowerCase() === 'sei') ||
+                              message.toLowerCase().includes('recommend') && 
+                              (message.toLowerCase().includes('sei') || message.toLowerCase().includes('token'));
+          
+          let mcpContext;
+          
+          if (isSEIRequest) {
+            console.log('🎯 [INFORMATION] Detected SEI-specific request - using SEI pipeline');
             
-            // Find HBAR in topTokens and update it
-            const hbarIndex = topTokens.findIndex(t => t.symbol === 'HBAR');
-            if (hbarIndex !== -1) {
-              topTokens[hbarIndex] = {
-                ...topTokens[hbarIndex],
-                priceUsd: hbarFromGecko.price,
-                marketCap: hbarFromGecko.marketCap,
-                volume24h: hbarFromGecko.volume24h,
-                change24h: hbarFromGecko.change24h,
-                source: 'GeckoTerminal'
+            // Determine recommendation criteria from message
+            let criteria = 'balanced';
+            if (message.toLowerCase().includes('safe')) criteria = 'safe';
+            else if (message.toLowerCase().includes('growth') || message.toLowerCase().includes('high return')) criteria = 'growth';
+            else if (message.toLowerCase().includes('stable')) criteria = 'stable';
+            else if (message.toLowerCase().includes('new')) criteria = 'new_tokens';
+            else if (message.toLowerCase().includes('trendy') || message.toLowerCase().includes('popular')) criteria = 'trendy_tokens';
+            else if (message.toLowerCase().includes('high risk') || message.toLowerCase().includes('risky')) criteria = 'high_risk_high_reward';
+            
+            console.log(`🔍 [INFORMATION] Using SEI pipeline with criteria: ${criteria}`);
+            
+            // Use network-specific pipeline with automatic network detection
+            console.log('🚀 [INFORMATION] Calling getSEINetworkPipeline...');
+            const networkPipeline = await mcpMarketDataService.getSEINetworkPipeline({
+              criteria,
+              count: 5,
+              includeDetailedPools: true,
+              includeTokenSearch: true,
+              userMessage: message // Let the service extract the network from the message
+            });
+            console.log('📊 [INFORMATION] getSEINetworkPipeline result:', {
+              success: networkPipeline.success,
+              hasData: !!networkPipeline.data,
+              targetNetwork: networkPipeline.targetNetwork
+            });
+            
+            if (networkPipeline.success) {
+              console.log(`✅ [INFORMATION] ${networkPipeline.targetNetwork.toUpperCase()} pipeline completed successfully`);
+              mcpContext = {
+                success: true,
+                data: {
+                  topPools: { success: true, data: networkPipeline.data.pools },
+                  tokenRecommendations: { success: true, data: networkPipeline.data.recommendations },
+                  networkSpecific: { success: true, data: networkPipeline.data.tokenData },
+                  network: networkPipeline.data.network,
+                  pipeline: networkPipeline
+                }
               };
-              console.log('🎯 HBAR data updated:', {
-                price: hbarFromGecko.price,
-                marketCap: hbarFromGecko.marketCap,
-                volume24h: hbarFromGecko.volume24h,
-                change24h: hbarFromGecko.change24h
+            } else {
+              console.warn('⚠️ [INFORMATION] SEI pipeline failed, using direct SEI fallback');
+              
+              // Fallback to general context when SEI pipeline fails
+              console.log('🔄 [INFORMATION] Using general MCP context as fallback...');
+              mcpContext = await mcpMarketDataService.getMarketContextForLLM({
+                includeTopPools: true,
+                includeTokenRecommendations: true,
+                includePriceData: true,
+                recommendationCriteria: criteria
               });
             }
+          } else {
+            console.log('🌐 [INFORMATION] General market request - using standard context');
+            console.log('🚀 [INFORMATION] Calling getMarketContextForLLM...');
+            // Get general market context for non-SEI requests
+            mcpContext = await mcpMarketDataService.getMarketContextForLLM({
+              includeTopPools: true,
+              includeTokenRecommendations: true,
+              includePriceData: true,
+              recommendationCriteria: 'balanced'
+            });
+            console.log('📊 [INFORMATION] getMarketContextForLLM result:', {
+              success: mcpContext.success,
+              hasTopPools: !!mcpContext.data?.topPools,
+              hasRecommendations: !!mcpContext.data?.tokenRecommendations
+            });
           }
           
-          // Get additional data for mentioned tokens
-          const specificTokenData = [];
+          // Get additional data based on token mentions
+          let specificTokenData = [];
+          if (tokenMentions.length > 0) {
+            console.log(`🎯 Fetching specific data for tokens: ${tokenMentions.join(', ')}`);
+            
           for (const tokenSymbol of tokenMentions) {
             try {
-              // Check if we have real-time data for this token
-              if (realTimeMarketData.tokens[tokenSymbol.toUpperCase()]) {
-                const realtimeToken = realTimeMarketData.tokens[tokenSymbol.toUpperCase()];
+                const searchResult = await mcpMarketDataService.searchPools(tokenSymbol);
+                if (searchResult.success) {
                 specificTokenData.push({
-                  token: {
-                    symbol: tokenSymbol.toUpperCase(),
-                    name: tokenSymbol.toUpperCase(),
-                    priceUsd: realtimeToken.price,
-                    marketCap: realtimeToken.marketCap,
-                    volume24h: realtimeToken.volume24h,
-                    change24h: realtimeToken.change24h,
-                    source: realtimeToken.source || 'Real-time API'
-                  },
-                  analysis: null
-                });
-              } else {
-                // Fallback to Hedera token service
-                const searchResults = hederaTokenService.searchTokens ? hederaTokenService.searchTokens(tokenSymbol) : [];
-                if (searchResults.length > 0) {
-                  const tokenInfo = searchResults[0];
-                  const analysis = hederaTokenService.analyzeToken ? await hederaTokenService.analyzeToken(tokenInfo.id) : null;
-                  specificTokenData.push({
-                    token: tokenInfo,
-                    analysis: analysis?.success ? analysis.analysis : null
+                    token: { symbol: tokenSymbol, name: tokenSymbol },
+                    searchData: searchResult.data,
+                    source: 'MCP'
                   });
-                }
               }
             } catch (tokenError) {
-              console.warn(`Failed to fetch data for token ${tokenSymbol}:`, tokenError.message);
+                console.warn(`Failed to search for token ${tokenSymbol}:`, tokenError.message);
+              }
             }
           }
           
+          // Parse MCP data into structured format
+          let topTokens, seiStats, dataSourceType;
+          
+          if (mcpContext.data.pipeline) {
+            // SEI Pipeline data
+            console.log('📊 [INFORMATION] Processing SEI pipeline data...');
+            topTokens = this.parseMCPPoolData(mcpContext.data.topPools?.data || '');
+            seiStats = {
+              totalTokens: topTokens.length,
+              activeTokens: topTokens.filter(t => t.volume24h > 0).length,
+              totalPools: topTokens.length,
+              mcpConnected: mcpContext.success,
+              networkId: mcpContext.data.network?.id || 'sei',
+              networkName: mcpContext.data.network?.name || 'SEI Network',
+              pipelineSteps: mcpContext.data.pipeline.steps.length,
+              pipelineSuccess: mcpContext.data.pipeline.success
+            };
+            dataSourceType = 'SEI_PIPELINE';
+            
+            console.log(`🎯 [INFORMATION] SEI pipeline processed: ${seiStats.pipelineSteps} steps, network: ${seiStats.networkId}`);
+          } else {
+            // General MCP data
+            console.log('🌐 [INFORMATION] Processing general MCP data...');
+            topTokens = this.parseMCPPoolData(mcpContext.data.topPools?.data || '');
+            seiStats = {
+              totalTokens: topTokens.length,
+              activeTokens: topTokens.filter(t => t.volume24h > 0).length,
+              totalPools: topTokens.length,
+              mcpConnected: mcpContext.success
+            };
+            dataSourceType = 'MCP_GENERAL';
+          }
+          
+          // Get token recommendations for analysis
+          let tokenRecommendations = [];
+          if (mcpContext.data.tokenRecommendations?.success) {
+            console.log('✅ [INFORMATION] MCP Server provided token recommendations');
+            console.log('📈 [INFORMATION] MCP recommendation data size:', mcpContext.data.tokenRecommendations.data?.length || 'N/A');
+            tokenRecommendations = this.parseMCPRecommendations(mcpContext.data.tokenRecommendations.data);
+          } else {
+            console.log('⚠️ [INFORMATION] MCP Server token recommendations failed or empty');
+          }
+          
+          // Structure market data for AI processing
           marketData = {
-            topTokens: topTokens,
+            topTokens,
             specificTokens: specificTokenData,
-            hederaStats: hederaStats,
+            tokenRecommendations,
+            seiStats,
             marketCap: topTokens.reduce((sum, t) => sum + (parseFloat(t.marketCap) || 0), 0),
             totalVolume: topTokens.reduce((sum, t) => sum + (parseFloat(t.volume24h) || 0), 0),
             averagePrice: topTokens.length > 0 ? topTokens.reduce((sum, t) => sum + (parseFloat(t.priceUsd) || 0), 0) / topTokens.length : 0,
-            activeTokens: topTokens.filter(t => t.inTopPools || t.dueDiligenceComplete).length,
+            activeTokens: topTokens.filter(t => t.inTopPools || t.volume24h > 0).length,
             timestamp: new Date().toISOString(),
             requestType: requestType,
-            mentionedTokens: tokenMentions.length
+            mentionedTokens: tokenMentions.length,
+            dataSource: dataSourceType || 'MCP_CLIENT',
+            mcpStatus: mcpContext.success ? 'connected' : 'disconnected',
+            seiPipeline: mcpContext.data.pipeline || null,
+            networkInfo: mcpContext.data.network || null,
+            isSEISpecific: !!mcpContext.data.pipeline
           };
           
-          console.log(`✅ Fetched data for ${topTokens.length} tokens, ${specificTokenData.length} specific tokens`);
+          if (dataSourceType === 'SEI_PIPELINE') {
+            console.log('🎉 [INFORMATION] ✅ SUCCESS: SEI PIPELINE DATA RETRIEVED');
+            console.log('📊 [INFORMATION] SEI Pipeline Summary:', {
+              dataSource: dataSourceType,
+              networkId: seiStats.networkId,
+              networkName: seiStats.networkName,
+              pipelineSteps: seiStats.pipelineSteps,
+              pipelineSuccess: seiStats.pipelineSuccess,
+              tokensCount: topTokens.length,
+              marketCap: `$${(marketData.marketCap / 1000000).toFixed(1)}M`,
+              volume24h: `$${(marketData.totalVolume / 1000000).toFixed(1)}M`,
+              recommendationsCount: tokenRecommendations.length,
+              serverStatus: mcpContext.success ? '🟢 SEI_CONNECTED' : '🔴 SEI_DISCONNECTED'
+            });
+            console.log('🎯 [INFORMATION] AI will receive REAL-TIME SEI NETWORK data via MCP pipeline');
         } else {
-          console.warn('⚠️ HederaTokenService not available, using fallback data');
-          // Enhanced fallback data with current market conditions
+            console.log('🎉 [INFORMATION] ✅ SUCCESS: MCP SERVER DATA RETRIEVED');
+            console.log('📊 [INFORMATION] MCP Data Summary:', {
+              dataSource: dataSourceType || 'MCP_CLIENT',
+              tokensCount: topTokens.length,
+              marketCap: `$${(marketData.marketCap / 1000000).toFixed(1)}M`,
+              volume24h: `$${(marketData.totalVolume / 1000000).toFixed(1)}M`,
+              mentionedTokens: tokenMentions.length,
+              mcpConnected: mcpContext.success,
+              recommendationsCount: tokenRecommendations.length,
+              serverStatus: mcpContext.success ? '🟢 CONNECTED' : '🔴 DISCONNECTED'
+            });
+            console.log('✨ [INFORMATION] AI will receive REAL-TIME MCP data for analysis');
+          }
+          
+        } else {
+          console.warn('❌ [INFORMATION] MCP Market Data Service NOT AVAILABLE');
+          console.log('🔄 [INFORMATION] DATA SOURCE: Switching to FALLBACK API');
+          // Fallback to original method with enhanced fallback data
+          try {
+            console.log('🌐 [INFORMATION] Attempting fallback API call to fetchMarketData...');
+            const realTimeMarketData = await fetchMarketData(['BTC', 'ETH', 'SEI', 'USDC', 'USDT', 'WBTC', 'DAI', 'LINK']);
+            
+            // Use real-time data if available
+            const topTokens = Object.entries(realTimeMarketData.tokens || {}).map(([symbol, data]) => ({
+              symbol,
+              name: data.name || symbol,
+              priceUsd: data.price || 0,
+              change24h: data.change24h || 0,
+              marketCap: data.marketCap || 0,
+              volume24h: data.volume24h || 0,
+              inTopPools: true,
+              source: 'fallback_api'
+            }));
+            
+            marketData = {
+              topTokens,
+              specificTokens: [],
+              tokenRecommendations: [],
+              seiStats: { totalTokens: topTokens.length, activeTokens: topTokens.length, totalPools: 0 },
+              marketCap: topTokens.reduce((sum, t) => sum + (parseFloat(t.marketCap) || 0), 0),
+              totalVolume: topTokens.reduce((sum, t) => sum + (parseFloat(t.volume24h) || 0), 0),
+              averagePrice: topTokens.length > 0 ? topTokens.reduce((sum, t) => sum + (parseFloat(t.priceUsd) || 0), 0) / topTokens.length : 0,
+              activeTokens: topTokens.length,
+              timestamp: new Date().toISOString(),
+              requestType: requestType,
+              mentionedTokens: tokenMentions.length,
+              dataSource: 'FALLBACK_API',
+              mcpStatus: 'disconnected'
+            };
+            
+            console.log('🎉 [INFORMATION] ✅ SUCCESS: FALLBACK API DATA RETRIEVED');
+            console.log('📊 [INFORMATION] Fallback Data Summary:', {
+              dataSource: 'FALLBACK_API',
+              tokensCount: topTokens.length,
+              marketCap: `$${(marketData.marketCap / 1000000).toFixed(1)}M`,
+              volume24h: `$${(marketData.totalVolume / 1000000).toFixed(1)}M`,
+              serverStatus: '🟡 FALLBACK_API'
+            });
+            console.log('⚡ [INFORMATION] AI will receive FALLBACK API data for analysis');
+          } catch (fallbackError) {
+            console.error('❌ [INFORMATION] FALLBACK API FAILED:', fallbackError.message);
+            console.warn('🔄 [INFORMATION] DATA SOURCE: Switching to STATIC FALLBACK DATA');
+            // Final fallback to static data
           marketData = {
             topTokens: [
-              { symbol: 'HBAR', name: 'Hedera', priceUsd: 0.065, change24h: 3.2, marketCap: 2100000000, volume24h: 45000000, inTopPools: true },
-              { symbol: 'SAUCE', name: 'SaucerSwap', priceUsd: 0.012, change24h: -1.8, marketCap: 12000000, volume24h: 2400000, inTopPools: true },
-              { symbol: 'WHBAR', name: 'Wrapped HBAR', priceUsd: 0.065, change24h: 3.1, marketCap: 15000000, volume24h: 5200000, inTopPools: true },
-              { symbol: 'USDC', name: 'USD Coin', priceUsd: 1.00, change24h: 0.1, marketCap: 850000000, volume24h: 125000000, inTopPools: true },
-              { symbol: 'WBTC', name: 'Wrapped Bitcoin', priceUsd: 43250, change24h: 2.4, marketCap: 45000000, volume24h: 8500000, inTopPools: true }
+                { symbol: 'SEI', name: 'Sei', priceUsd: 0.45, change24h: 2.1, marketCap: 1800000000, volume24h: 35000000, inTopPools: true, source: 'static' },
+                { symbol: 'USDC', name: 'USD Coin', priceUsd: 1.00, change24h: 0.1, marketCap: 850000000, volume24h: 125000000, inTopPools: true, source: 'static' },
+                { symbol: 'WBTC', name: 'Wrapped Bitcoin', priceUsd: 43250, change24h: 2.4, marketCap: 45000000, volume24h: 8500000, inTopPools: true, source: 'static' },
+                { symbol: 'ETH', name: 'Ethereum', priceUsd: 2450, change24h: 1.8, marketCap: 65000000, volume24h: 15000000, inTopPools: true, source: 'static' },
+                { symbol: 'USDT', name: 'Tether USD', priceUsd: 1.00, change24h: 0.05, marketCap: 520000000, volume24h: 85000000, inTopPools: true, source: 'static' }
             ],
             specificTokens: [],
-            hederaStats: { totalTokens: 500, activeTokens: 120, totalPools: 85 },
-            marketCap: 3022000000,
-            totalVolume: 186100000,
-            averagePrice: 8677.25,
+              tokenRecommendations: [],
+              seiStats: { totalTokens: 450, activeTokens: 95, totalPools: 65 },
+              marketCap: 3280000000,
+              totalVolume: 268500000,
+              averagePrice: 9441.01,
             activeTokens: 5,
             timestamp: new Date().toISOString(),
             requestType: requestType,
-            mentionedTokens: tokenMentions.length
-          };
+              mentionedTokens: tokenMentions.length,
+              dataSource: 'STATIC_FALLBACK',
+              mcpStatus: 'disconnected'
+            };
+            
+            console.log('🎉 [INFORMATION] ✅ SUCCESS: STATIC FALLBACK DATA LOADED');
+            console.log('📊 [INFORMATION] Static Data Summary:', {
+              dataSource: 'STATIC_FALLBACK',
+              tokensCount: marketData.topTokens.length,
+              marketCap: `$${(marketData.marketCap / 1000000).toFixed(1)}M`,
+              volume24h: `$${(marketData.totalVolume / 1000000).toFixed(1)}M`,
+              serverStatus: '🔴 STATIC_ONLY'
+            });
+            console.log('⚠️ [INFORMATION] AI will receive STATIC FALLBACK data (not real-time)');
+          }
         }
       } catch (dataError) {
-        console.error('❌ Market data fetch failed:', dataError.message);
+        console.error('💥 [INFORMATION] CRITICAL ERROR: All data sources failed!');
+        console.error('❌ [INFORMATION] Error details:', dataError.message);
+        console.error('❌ [INFORMATION] Full error stack:', dataError.stack);
+        console.error('❌ [INFORMATION] MCP Service available?', !!mcpMarketDataService);
+        if (mcpMarketDataService) {
+          console.error('❌ [INFORMATION] MCP Service methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(mcpMarketDataService)));
+        }
+        console.log('🔄 [INFORMATION] DATA SOURCE: Emergency empty data structure');
         marketData = {
           topTokens: [],
           specificTokens: [],
-          hederaStats: {},
+          tokenRecommendations: [],
+          seiStats: {},
           marketCap: 0,
           totalVolume: 0,
           averagePrice: 0,
@@ -621,11 +884,29 @@ class PromptRouterController {
           timestamp: new Date().toISOString(),
           requestType: requestType,
           mentionedTokens: tokenMentions.length,
+          dataSource: 'ERROR_FALLBACK',
+          mcpStatus: 'error',
           error: 'Market data unavailable'
         };
+        console.log('⚠️ [INFORMATION] AI will receive EMPTY data structure');
       }
 
-      // Prepare AI prompt for dynamic analysis
+      // Final data source confirmation log
+      console.log('🏁 [INFORMATION] FINAL DATA SOURCE CONFIRMED:', marketData.dataSource || 'UNKNOWN');
+      console.log('📈 [INFORMATION] Market data ready for AI processing with', marketData.topTokens?.length || 0, 'tokens');
+
+      // Prepare AI prompt for dynamic analysis with enhanced market intelligence
+      console.log('🧠 [INFORMATION] Building AI prompt with market data from:', marketData.dataSource);
+      console.log('📝 [INFORMATION] AI prompt will include:', {
+        tokensData: marketData.topTokens?.length || 0,
+        specificTokens: marketData.specificTokens?.length || 0,
+        recommendations: marketData.tokenRecommendations?.length || 0,
+        mcpStatus: marketData.mcpStatus || 'unknown',
+        isRealTime: marketData.dataSource === 'MCP_CLIENT',
+        marketIntelligence: !!marketData.marketIntelligence,
+        newTokensCount: marketData.marketIntelligence?.newTokens?.count || 0,
+        newPoolsCount: marketData.marketIntelligence?.newPools?.count || 0
+      });
       const aiPrompt = this.buildInformationPrompt(message, requestType, tokenMentions, marketData);
       
       // Get AI-powered analysis with enhanced error handling
@@ -701,7 +982,7 @@ class PromptRouterController {
           analysis: aiAnalysis.analysis,
           recommendations: aiAnalysis.recommendations,
           marketContext: {
-            dataSource: 'real-time_crypto_markets',
+            dataSource: marketData.dataSource || 'real-time_crypto_markets',
             lastUpdated: marketData.timestamp,
             tokensAnalyzed: tokenMentions.length || 'general_market',
             aiModel: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo'
@@ -759,18 +1040,18 @@ class PromptRouterController {
       // Get comprehensive market data for context
       let marketData = {};
       try {
-        if (hederaTokenService) {
-          const topTokens = hederaTokenService.getTopTokens ? hederaTokenService.getTopTokens(30) : [];
-          const hederaStats = hederaTokenService.getStats ? hederaTokenService.getStats() : {};
+        if (seiAgentService) {
+          const topTokens = seiAgentService.getTopTokens ? seiAgentService.getTopTokens(30) : [];
+          const seiStats = seiAgentService.getStats ? seiAgentService.getStats() : {};
           
           // Get specific data for mentioned tokens
           const portfolioData = [];
           for (const tokenSymbol of tokenMentions) {
             try {
-              const searchResults = hederaTokenService.searchTokens ? hederaTokenService.searchTokens(tokenSymbol) : [];
+              const searchResults = seiAgentService.searchTokens ? seiAgentService.searchTokens(tokenSymbol) : [];
               if (searchResults.length > 0) {
                 const tokenInfo = searchResults[0];
-                const analysis = hederaTokenService.analyzeToken ? await hederaTokenService.analyzeToken(tokenInfo.id) : null;
+                const analysis = seiAgentService.analyzeToken ? await seiAgentService.analyzeToken(tokenInfo.id) : null;
                 portfolioData.push({
                   token: tokenInfo,
                   analysis: analysis?.success ? analysis.analysis : null
@@ -784,7 +1065,7 @@ class PromptRouterController {
           marketData = {
             topTokens,
             portfolioTokens: portfolioData,
-            hederaStats,
+            seiStats,
             marketCap: topTokens.reduce((sum, t) => sum + (parseFloat(t.marketCap) || 0), 0),
             totalVolume: topTokens.reduce((sum, t) => sum + (parseFloat(t.volume24h) || 0), 0),
             timestamp: new Date().toISOString()
@@ -792,7 +1073,7 @@ class PromptRouterController {
         }
       } catch (dataError) {
         console.error('❌ Market data fetch failed for feedback:', dataError.message);
-        marketData = { topTokens: [], portfolioTokens: [], hederaStats: {}, marketCap: 0, totalVolume: 0, timestamp: new Date().toISOString() };
+        marketData = { topTokens: [], portfolioTokens: [], seiStats: {}, marketCap: 0, totalVolume: 0, timestamp: new Date().toISOString() };
       }
       
       // Use AI for comprehensive feedback analysis if available
@@ -917,8 +1198,8 @@ class PromptRouterController {
     const tokenPatterns = [
       /\b[A-Z]{2,10}\b/g, // Token symbols (2-10 uppercase letters)
       /\$[A-Z]{2,10}\b/g, // Token symbols with $ prefix
-      /0\.0\.[0-9]+/g, // Hedera token IDs
-      /\b(?:HBAR|SAUCE|WHBAR)\b/gi // Common Hedera tokens
+      /0x[a-fA-F0-9]{40}/g, // EVM token addresses
+      /\b(?:SEI|USDC|WBTC|ETH|USDT)\b/gi // Common SEI ecosystem tokens
     ];
     
     const mentions = new Set();
@@ -953,9 +1234,9 @@ class PromptRouterController {
       const lowRiskTokens = topTokens.filter(t => t.dueDiligenceComplete && t.inTopPools);
       recommendations.push({
         type: 'diversification',
-        suggestion: 'Consider diversifying across established Hedera tokens',
+        suggestion: 'Consider diversifying across established SEI ecosystem tokens',
         tokens: lowRiskTokens.slice(0, 3).map(t => t.symbol),
-        reasoning: 'These tokens have completed due diligence and are in top pools'
+        reasoning: 'These tokens have established liquidity and trading history'
       });
     }
     
@@ -969,7 +1250,7 @@ class PromptRouterController {
     const distribution = { low: 0, medium: 0, high: 0, veryHigh: 0 };
     
     tokens.forEach(token => {
-      const risk = hederaTokenService.assessRisk(token);
+      const risk = seiAgentService.assessRisk ? seiAgentService.assessRisk(token) : { level: 'Medium' };
       if (risk.level === 'Low') distribution.low++;
       else if (risk.level === 'Medium') distribution.medium++;
       else if (risk.level === 'High') distribution.high++;
@@ -996,11 +1277,11 @@ class PromptRouterController {
       }
     }
     
-    const establishedTokens = topTokens.filter(t => t.dueDiligenceComplete && t.priceUsd > 0.01);
+    const establishedTokens = topTokens.filter(t => t.inTopPools && t.priceUsd > 0.01);
     if (establishedTokens.length > 0) {
       insights.push({
         type: 'opportunity',
-        message: 'Consider established tokens with completed due diligence',
+        message: 'Consider tokens with established liquidity and trading volume',
         tokens: establishedTokens.slice(0, 3).map(t => t.symbol)
       });
     }
@@ -1035,7 +1316,7 @@ class PromptRouterController {
     
     if (tokenAnalysis.length === 0) {
       steps.push('Specify token symbols for detailed analysis');
-      steps.push('Review top performing Hedera tokens');
+      steps.push('Review top performing SEI ecosystem tokens');
     } else {
       steps.push('Review risk assessments for analyzed tokens');
       steps.push('Consider diversification strategies');
@@ -1057,29 +1338,33 @@ class PromptRouterController {
     const currentTime = new Date().toLocaleString();
     const hasSpecificTokens = tokenMentions.length > 0;
     const hasMarketData = marketData.topTokens && marketData.topTokens.length > 0;
+    const hasMarketIntelligence = marketData.marketIntelligence && (
+      (marketData.marketIntelligence.newTokens?.count > 0) || 
+      (marketData.marketIntelligence.newPools?.count > 0)
+    );
     
-    const systemPrompt = `You are a senior Hedera blockchain and cryptocurrency market analyst with deep expertise in the Hedera ecosystem. You specialize in providing comprehensive, data-driven market analysis and investment insights.
+    const systemPrompt = `You are a senior blockchain and cryptocurrency market analyst with expertise in emerging blockchain ecosystems. You specialize in providing objective, data-driven market analysis and investment insights based on current market conditions and fundamentals.
 
 EXPERTISE AREAS:
-- Hedera Hashgraph ecosystem and tokenomics
-- DeFi protocols on Hedera (SaucerSwap, HeliSwap, etc.)
-- Hedera native tokens (HBAR, SAUCE, WHBAR, etc.)
-- Cross-chain token analysis (USDC, WBTC, ETH on Hedera)
+- Blockchain ecosystem analysis and tokenomics
+- DeFi protocols and decentralized exchanges
+- Token economics and market dynamics
+- Cross-chain token analysis and liquidity
 - Market sentiment and technical analysis
 - Risk assessment and portfolio optimization
 
 ANALYSIS APPROACH:
 1. Data-driven insights based on real market data
-2. Hedera-focused perspective with broader crypto context
-3. Practical, actionable recommendations
+2. Objective analysis without bias toward any specific ecosystem
+3. Practical, actionable recommendations based on fundamentals
 4. Clear risk assessment and warnings
 5. User-friendly explanations of complex concepts
 
-RESPONSE FORMAT (STRICT JSON - FOCUS ON NUMBERS & METRICS):
+RESPONSE FORMAT (STRICT JSON - FOCUS ON COMPREHENSIVE TOKEN RECOMMENDATIONS):
 {
   "analysis": {
     "marketOverview": {
-      "summary": "Brief 1-2 sentence market summary",
+      "summary": "Brief 1-2 sentence market summary based on comprehensive data",
       "totalMarketCap": 0.00,
       "volume24h": 0.00,
       "activeTokens": 0,
@@ -1112,24 +1397,30 @@ RESPONSE FORMAT (STRICT JSON - FOCUS ON NUMBERS & METRICS):
   "recommendations": [
     {
       "token": "SYMBOL",
-      "action": "BUY|SELL|HOLD|WATCH",
+      "name": "Token Name",
+      "action": "BUY|WATCH|HOLD",
+      "category": "new_token|established|stablecoin",
       "confidence": 85,
       "targetPrice": 0.00,
       "currentPrice": 0.00,
       "upside": 15.5,
-      "riskScore": 45,
-      "timeframe": "1-3 months",
-      "reasoning": "Brief 1 sentence explanation"
+      "riskScore": 25,
+      "timeframe": "short-term|medium-term|long-term",
+      "reasoning": "Detailed explanation based on real market data",
+      "liquidity": 0.00,
+      "volume24h": 0.00,
+      "poolAddress": "0x...",
+      "estimatedAge": "< 1 day|1-7 days|1-4 weeks|> 1 month"
     }
   ],
   "quickInsights": [
-    "Top performer: TOKEN +15.2%",
-    "High volume: TOKEN $2.5M",
-    "Risk alert: TOKEN volatility 45%"
+    "New opportunity: TOKEN with $X liquidity",
+    "High volume: TOKEN $2.5M daily",
+    "Established: TOKEN stable performance"
   ],
   "alerts": [
-    "Price target: HBAR $0.08 (+23%)",
-    "Stop loss: SAUCE $0.009 (-15%)"
+    "New listing: TOKEN just launched",
+    "High risk: TOKEN limited liquidity"
   ],
   "marketData": {
     "timestamp": "2024-01-20T10:30:00Z",
@@ -1141,45 +1432,145 @@ RESPONSE FORMAT (STRICT JSON - FOCUS ON NUMBERS & METRICS):
 
 MARKET CONTEXT:
 - Analysis Time: ${currentTime}
-- Hedera Tokens Available: ${marketData.topTokens?.length || 0}
-- Active Trading Pairs: ${marketData.activeTokens || 0}
-- Total Market Cap: $${marketData.marketCap ? (marketData.marketCap / 1000000).toFixed(1) + 'M' : 'N/A'}
-- 24h Volume: $${marketData.totalVolume ? (marketData.totalVolume / 1000000).toFixed(1) + 'M' : 'N/A'}
+- Network: ${marketData.marketIntelligence?.network || 'sei-evm'}
 - Request Type: ${requestType}
-- Mentioned Tokens: ${tokenMentions.join(', ') || 'None specified'}
+- Mentioned Tokens: ${tokenMentions.join(', ') || 'Token recommendations requested'}
 
-HEDERA ECOSYSTEM STATUS:
-- Network: Hedera Mainnet (${marketData.hederaStats?.totalTokens || 500}+ tokens)
-- Major DEXs: SaucerSwap, HeliSwap, Pangolin
-- Key Infrastructure: Hashgraph consensus, HTS (Hedera Token Service)
+COMPREHENSIVE MARKET INTELLIGENCE:
+- New Pools Detected: ${marketData.marketIntelligence?.newPools?.count || 0} in last 24h
+- New Tokens Found: ${marketData.marketIntelligence?.newTokens?.count || 0} newly listed
+- Trending Pools: ${marketData.marketIntelligence?.trendingPools?.count || 0} with high activity
+- Network Health: ${marketData.marketIntelligence?.summary?.networkHealth || 'Stable'}
+- Total New Opportunities: ${marketData.marketIntelligence?.summary?.totalNewOpportunities || 0}
+
+NETWORK STATUS:
+- Data Source: ${marketData.marketIntelligence?.dataSource || 'Enhanced MCP'}
+- Total Tokens Available: ${marketData.topTokens?.length || 0}
+- Active Trading Pairs: ${marketData.activeTokens || 0}
+- Market Activity Level: ${marketData.marketIntelligence?.summary?.marketActivity || 0}
 
 ANALYSIS REQUIREMENTS:
-- Focus on Hedera ecosystem tokens and dynamics
+- Provide objective analysis based on available market data
 - Include broader crypto market context when relevant
 - Provide specific price levels and percentages
 - Consider network effects and protocol developments
 - Address liquidity and trading considerations
-- Include both bullish and bearish scenarios`;
+- Include both bullish and bearish scenarios
+- Focus on fundamentals rather than promotional content`;
 
-    // Build comprehensive user prompt with rich market data
+    // Build comprehensive user prompt with enhanced market intelligence
     let marketSnapshot = '';
+    let newTokensData = '';
+    let establishedTokensData = '';
+    
+    // Process new tokens from market intelligence with improved parsing
+    if (hasMarketIntelligence && marketData.marketIntelligence.newTokens?.count > 0) {
+      console.log('🎯 Processing new tokens data for AI prompt...');
+      const newTokensText = marketData.marketIntelligence.newTokens.data;
+      
+      // Parse the new tokens data more carefully
+      const lines = newTokensText.split('\n');
+      const parsedTokens = [];
+      let currentToken = null;
+      
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        
+        // Look for token header: "1. BullionX Herd (BULLX)"
+        const tokenMatch = trimmedLine.match(/^\d+\.\s+(.+?)\s*\(([^)]+)\)$/);
+        if (tokenMatch) {
+          if (currentToken) {
+            parsedTokens.push(currentToken);
+          }
+          currentToken = {
+            name: tokenMatch[1].trim(),
+            symbol: tokenMatch[2].trim(),
+            price: 0,
+            liquidity: 0,
+            volume: 0,
+            age: 'Unknown',
+            address: ''
+          };
+        }
+        // Parse individual fields
+        else if (currentToken) {
+          const priceMatch = trimmedLine.match(/Current Price:\s*\$([0-9.]+)/);
+          const liquidityMatch = trimmedLine.match(/Liquidity:\s*\$([0-9,.]+)/);
+          const volumeMatch = trimmedLine.match(/24h Volume:\s*\$([0-9,.]+)/);
+          const ageMatch = trimmedLine.match(/Estimated Age:\s*(.+)/);
+          const addressMatch = trimmedLine.match(/Address:\s*(0x[a-fA-F0-9]+)/);
+          
+          if (priceMatch) currentToken.price = parseFloat(priceMatch[1]);
+          if (liquidityMatch) currentToken.liquidity = parseFloat(liquidityMatch[1].replace(/,/g, ''));
+          if (volumeMatch) currentToken.volume = parseFloat(volumeMatch[1].replace(/,/g, ''));
+          if (ageMatch) currentToken.age = ageMatch[1].trim();
+          if (addressMatch) currentToken.address = addressMatch[1];
+        }
+      }
+      
+      // Add the last token
+      if (currentToken) {
+        parsedTokens.push(currentToken);
+      }
+      
+      console.log(`✅ Parsed ${parsedTokens.length} tokens with real data:`, parsedTokens.map(t => `${t.symbol}: $${t.price}`));
+      
+      if (parsedTokens.length > 0) {
+        newTokensData = `
+🆕 REAL NEW TOKENS DATA - USE THESE EXACT PRICES:
+${parsedTokens.slice(0, 6).map(token => 
+  `• ${token.symbol} (${token.name}): 
+    PRICE: $${token.price.toFixed(8)} 
+    LIQUIDITY: $${token.liquidity.toLocaleString()} 
+    VOLUME: $${token.volume.toLocaleString()} 
+    AGE: ${token.age}
+    ADDRESS: ${token.address}`
+).join('\n')}`;
+      }
+    }
+    
+    // Add established tokens for balanced recommendations with estimated prices
+    establishedTokensData = `
+🏛️ ESTABLISHED TOKENS (Low-Risk Options) - USE THESE PRICES:
+• SEI (Sei Network): 
+    PRICE: $0.45 (estimated)
+    CATEGORY: native_token
+    RISK: LOW
+• WSEI (Wrapped SEI): 
+    PRICE: $0.45 (pegged to SEI)
+    CATEGORY: wrapped_token
+    RISK: LOW
+• USDC (USD Coin): 
+    PRICE: $1.00 (stable)
+    CATEGORY: stablecoin
+    RISK: VERY_LOW
+• WETH (Wrapped Ethereum): 
+    PRICE: $4330.00 (estimated from cross-chain)
+    CATEGORY: major_crypto
+    RISK: MEDIUM
+• WBTC (Wrapped Bitcoin): 
+    PRICE: $43250.00 (estimated from cross-chain)
+    CATEGORY: major_crypto
+    RISK: MEDIUM`;
+    
     if (hasMarketData) {
-      const topTokensDisplay = marketData.topTokens.slice(0, 8).map(token => {
+      const topTokensDisplay = marketData.topTokens.slice(0, 5).map(token => {
         const change = token.change24h;
         const changeStr = change > 0 ? `+${change.toFixed(2)}%` : `${change?.toFixed(2) || '0.00'}%`;
-        const volumeStr = token.volume24h ? `Vol: $${(token.volume24h / 1000000).toFixed(1)}M` : 'Vol: N/A';
-        return `• ${token.symbol}: $${token.priceUsd?.toFixed(6) || 'N/A'} (${changeStr}) - ${volumeStr}`;
+        const volumeStr = token.volume24h ? `$${(token.volume24h / 1000).toFixed(1)}K` : 'N/A';
+        return `• ${token.symbol}: $${token.priceUsd?.toFixed(8) || 'N/A'} (${changeStr}) | Vol: ${volumeStr}`;
       }).join('\n');
       
       marketSnapshot = `
-CURRENT HEDERA MARKET DATA:
-${topTokensDisplay}
+📊 CURRENT MARKET DATA:
+${topTokensDisplay}${newTokensData}${establishedTokensData}
 
-MARKET STATISTICS:
-• Total Hedera Market Cap: $${(marketData.marketCap / 1000000).toFixed(1)}M
-• 24h Trading Volume: $${(marketData.totalVolume / 1000000).toFixed(1)}M
-• Active Tokens: ${marketData.activeTokens}/${marketData.topTokens.length}
-• Market Sentiment: ${marketData.totalVolume > 50000000 ? 'High Activity' : 'Moderate Activity'}`;
+📈 MARKET INTELLIGENCE SUMMARY:
+• New Opportunities: ${marketData.marketIntelligence?.summary?.totalNewOpportunities || 0} total
+• Network Health: ${marketData.marketIntelligence?.summary?.networkHealth || 'Stable'}
+• Risk Level: ${marketData.marketIntelligence?.summary?.riskFactors?.length > 0 ? 'Monitor new token activity' : 'Standard market risks'}`;
+    } else {
+      marketSnapshot = newTokensData + establishedTokensData;
     }
 
     let specificTokenAnalysis = '';
@@ -1196,35 +1587,49 @@ ${marketData.specificTokens.map(item => `
 `).join('')}`;
     }
 
-    const userPrompt = `Provide comprehensive Hedera market analysis for this query:
+    const userPrompt = `Provide comprehensive market analysis and token recommendations for this query:
 
 USER QUERY: "${message}"
 
 ANALYSIS PARAMETERS:
-• Request Type: ${requestType}
-• Focus Tokens: ${hasSpecificTokens ? tokenMentions.join(', ') : 'General Hedera ecosystem'}
-• Analysis Depth: ${hasSpecificTokens ? 'Token-specific + ecosystem' : 'Ecosystem overview'}
+• Network: ${marketData.marketIntelligence?.network || 'sei-evm'}
+• Request Type: ${requestType} 
+• Focus: ${hasSpecificTokens ? tokenMentions.join(', ') : 'Comprehensive token recommendations'}
+• Intelligence Available: ${hasMarketIntelligence ? 'Live market intelligence with new tokens/pools data' : 'Standard market data'}
 ${marketSnapshot}
 ${specificTokenAnalysis}
 
-ANALYSIS REQUIREMENTS:
-1. Market Overview: Current Hedera ecosystem conditions and broader crypto context
-2. Token Analysis: Specific insights on mentioned tokens or top Hedera tokens
-3. Technical Assessment: Price action, volume, liquidity analysis
-4. Fundamental Review: Protocol developments, adoption, ecosystem growth
-5. Risk Evaluation: Comprehensive risk factors and warnings
-6. Actionable Recommendations: Specific investment/trading suggestions
-7. Next Steps: Clear action plan for the user
+CRITICAL RECOMMENDATION REQUIREMENTS:
+1. **MANDATORY**: Use the EXACT prices provided above - DO NOT use $0.00 values
+2. **New Token Analysis**: Recommend from the ${marketData.marketIntelligence?.newTokens?.count || 0} newly discovered tokens with REAL prices shown above
+3. **Established Token Inclusion**: Include the established tokens with their estimated prices  
+4. **Price Accuracy**: Every recommendation MUST have a real currentPrice (never 0)
+5. **Risk-Based Selection**: 
+   - VERY_LOW Risk: USDC ($1.00)
+   - LOW Risk: SEI ($0.45), WSEI ($0.45)  
+   - MEDIUM Risk: WETH ($4330), WBTC ($43250)
+   - HIGH Risk: New tokens (BULLX, syUSD, USD0, etc.) with their real prices
 
-FOCUS AREAS:
-- Hedera network fundamentals and tokenomics
-- DeFi ecosystem development (SaucerSwap, HeliSwap growth)
-- Cross-chain token adoption on Hedera
-- Regulatory environment and compliance advantages
-- Enterprise adoption and partnership impacts
-- Technical analysis with Hedera-specific considerations
+MANDATORY OUTPUT REQUIREMENTS:
+- **currentPrice**: Use the EXACT prices from the data above (never 0)
+- **targetPrice**: Calculate realistic target based on currentPrice + upside %
+- **liquidity**: Use the real liquidity values provided
+- **volume24h**: Use the real volume values provided
+- **category**: Use the categories specified above
+- **reasoning**: Reference the specific price, liquidity, and age data
 
-Please provide detailed, data-driven analysis that helps the user understand both immediate market conditions and longer-term Hedera ecosystem trends.`;
+EXAMPLE - DO THIS FORMAT:
+{
+  "token": "BULLX",
+  "currentPrice": 0.0000334, // EXACT price from data above
+  "targetPrice": 0.0000501,  // 50% upside calculation
+  "liquidity": 4994,         // EXACT liquidity from data
+  "volume24h": 53,           // EXACT volume from data
+  "category": "new_token",
+  "reasoning": "New token at $0.0000334 with $4,994 liquidity, less than 1 day old"
+}
+
+CRITICAL: Every recommendation MUST use the real data provided above. NO ZERO VALUES ALLOWED.`;
 
     return {
       system: systemPrompt,
@@ -1256,17 +1661,17 @@ Please provide detailed, data-driven analysis that helps the user understand bot
     const tokenData = [];
     
     for (const mention of tokenMentions) {
-      const searchResults = hederaTokenService.searchTokens(mention);
+      const searchResults = seiAgentService.searchTokens ? seiAgentService.searchTokens(mention) : [];
       if (searchResults.length > 0) {
         const token = searchResults[0];
-        const liveData = await hederaTokenService.getLiveTokenData(token.id);
-        const poolsData = await hederaTokenService.getTokenPools(token.id);
+        const liveData = await seiAgentService.getLiveTokenData ? seiAgentService.getLiveTokenData(token.id) : null;
+        const poolsData = await seiAgentService.getTokenPools ? seiAgentService.getTokenPools(token.id) : null;
         
         tokenData.push({
           token,
-          liveData: liveData.success ? liveData.data : null,
-          poolsData: poolsData.success ? poolsData.data : null,
-          analysis: await hederaTokenService.analyzeToken(token.id)
+          liveData: liveData?.success ? liveData.data : null,
+          poolsData: poolsData?.success ? poolsData.data : null,
+          analysis: await seiAgentService.analyzeToken ? seiAgentService.analyzeToken(token.id) : null
         });
       }
     }
@@ -1278,14 +1683,14 @@ Please provide detailed, data-driven analysis that helps the user understand bot
    * Get general token information
    */
   async getGeneralTokenInformation() {
-    const topTokens = hederaTokenService.getTopTokens(10);
-    const stats = hederaTokenService.getStats();
+    const topTokens = seiAgentService.getTopTokens ? seiAgentService.getTopTokens(10) : [];
+    const stats = seiAgentService.getStats ? seiAgentService.getStats() : {};
     
     return {
       topTokens,
       statistics: stats,
       categories: {
-        established: topTokens.filter(t => t.dueDiligenceComplete).length,
+        established: topTokens.filter(t => t.inTopPools).length,
         highLiquidity: topTokens.filter(t => t.inTopPools).length,
         newTokens: topTokens.filter(t => t.createdAt && new Date(t.createdAt) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).length
       }
@@ -1296,8 +1701,8 @@ Please provide detailed, data-driven analysis that helps the user understand bot
    * Get market overview information
    */
   async getMarketOverviewInformation() {
-    const allTokens = hederaTokenService.getAllTokens();
-    const topTokens = hederaTokenService.getTopTokens(20);
+    const allTokens = seiAgentService.getAllTokens ? seiAgentService.getAllTokens() : [];
+    const topTokens = seiAgentService.getTopTokens ? seiAgentService.getTopTokens(20) : [];
     
     return {
       totalTokens: allTokens.length,
@@ -1305,7 +1710,7 @@ Please provide detailed, data-driven analysis that helps the user understand bot
       marketSegments: {
         defi: topTokens.filter(t => t.symbol.includes('DEFI') || t.name.toLowerCase().includes('defi')).length,
         gaming: topTokens.filter(t => t.name.toLowerCase().includes('game') || t.name.toLowerCase().includes('nft')).length,
-        utility: topTokens.filter(t => t.dueDiligenceComplete && t.inTopPools).length
+        utility: topTokens.filter(t => t.inTopPools && t.volume24h > 0).length
       },
       riskDistribution: this.calculateRiskDistribution(topTokens)
     };
@@ -1319,22 +1724,22 @@ Please provide detailed, data-driven analysis that helps the user understand bot
     
     if (tokenMentions.length > 0) {
       for (const mention of tokenMentions) {
-        const searchResults = hederaTokenService.searchTokens(mention);
+        const searchResults = seiAgentService.searchTokens ? seiAgentService.searchTokens(mention) : [];
         if (searchResults.length > 0) {
           const token = searchResults[0];
-          const liveData = await hederaTokenService.getLiveTokenData(token.id);
+          const liveData = await seiAgentService.getLiveTokenData ? seiAgentService.getLiveTokenData(token.id) : null;
           
           priceData.push({
             symbol: token.symbol,
             name: token.name,
             currentPrice: token.priceUsd,
-            livePrice: liveData.success ? liveData.data?.attributes?.price_usd : null,
-            change24h: liveData.success ? liveData.data?.attributes?.price_change_percentage?.['24h'] : null
+            livePrice: liveData?.success ? liveData.data?.attributes?.price_usd : null,
+            change24h: liveData?.success ? liveData.data?.attributes?.price_change_percentage?.['24h'] : null
           });
         }
       }
     } else {
-      const topTokens = hederaTokenService.getTopTokens(10);
+      const topTokens = seiAgentService.getTopTokens ? seiAgentService.getTopTokens(10) : [];
       priceData.push(...topTokens.map(token => ({
         symbol: token.symbol,
         name: token.name,
@@ -1349,12 +1754,15 @@ Please provide detailed, data-driven analysis that helps the user understand bot
    * Get general information
    */
   async getGeneralInformation(message) {
+    const allTokens = seiAgentService.getAllTokens ? seiAgentService.getAllTokens() : [];
+    const topTokens = seiAgentService.getTopTokens ? seiAgentService.getTopTokens(5) : [];
+    
     return {
-      message: 'General Hedera ecosystem information',
+      message: 'General market ecosystem information',
       ecosystem: {
-        totalTokens: hederaTokenService.getAllTokens().length,
-        topTokens: hederaTokenService.getTopTokens(5).map(t => ({ symbol: t.symbol, name: t.name })),
-        features: ['Fast transactions', 'Low fees', 'Enterprise adoption', 'Sustainable consensus']
+        totalTokens: allTokens.length,
+        topTokens: topTokens.map(t => ({ symbol: t.symbol, name: t.name })),
+        features: ['Decentralized trading', 'Liquidity pools', 'Cross-chain compatibility', 'Low transaction fees']
       },
       suggestion: 'Ask about specific tokens, market overview, or price data for detailed analysis'
     };
@@ -1368,7 +1776,7 @@ Please provide detailed, data-driven analysis that helps the user understand bot
       token_specific: 'Learn about token fundamentals: market cap, liquidity, use cases, and risk factors.',
       market_overview: 'Understand market dynamics: supply/demand, trading volume, and market sentiment.',
       price_data: 'Price analysis includes current value, historical trends, and volatility metrics.',
-      general: 'Hedera offers fast, secure, and sustainable blockchain infrastructure for tokens and dApps.'
+      general: 'Blockchain networks provide infrastructure for decentralized trading, token economics, and DeFi protocols.'
     };
     
     return content[requestType] || content.general;
@@ -1382,7 +1790,7 @@ Please provide detailed, data-driven analysis that helps the user understand bot
       token_specific: ['What is the trading volume?', 'Show me the price history', 'What are the risks?'],
       market_overview: ['Which tokens are trending?', 'Show me new listings', 'What is the market sentiment?'],
       price_data: ['Show me price alerts', 'Compare with other tokens', 'What affects the price?'],
-      general: ['Show me top tokens', 'What is Hedera?', 'How to start trading?']
+      general: ['Show me top tokens', 'What are the market fundamentals?', 'How to start trading?']
     };
     
     return queries[requestType] || queries.general;
@@ -1412,10 +1820,10 @@ Please provide detailed, data-driven analysis that helps the user understand bot
     const portfolioTokens = [];
     
     for (const mention of tokenMentions) {
-      const searchResults = hederaTokenService.searchTokens(mention);
+      const searchResults = seiAgentService.searchTokens ? seiAgentService.searchTokens(mention) : [];
       if (searchResults.length > 0) {
-        const analysis = await hederaTokenService.analyzeToken(searchResults[0].id);
-        if (analysis.success) {
+        const analysis = await seiAgentService.analyzeToken ? seiAgentService.analyzeToken(searchResults[0].id) : null;
+        if (analysis?.success) {
           portfolioTokens.push(analysis.analysis);
         }
       }
@@ -1511,8 +1919,8 @@ Please provide detailed, data-driven analysis that helps the user understand bot
    */
   async provideGeneralFeedback(message, tokenMentions) {
     return {
-      message: 'General feedback on Hedera token ecosystem',
-      marketHealth: 'Hedera ecosystem shows steady growth with increasing token adoption',
+      message: 'General feedback on token ecosystem performance',
+      marketHealth: 'Token ecosystem shows development with growing adoption patterns',
       suggestion: 'Focus on established tokens with completed due diligence for safer investments'
     };
   }
@@ -1524,7 +1932,7 @@ Please provide detailed, data-driven analysis that helps the user understand bot
     return [
       'Diversify across different token categories',
       'Monitor risk levels regularly',
-      'Stay updated with Hedera ecosystem developments',
+      'Stay updated with network ecosystem developments',
       'Consider dollar-cost averaging for volatile tokens'
     ];
   }
@@ -1533,10 +1941,10 @@ Please provide detailed, data-driven analysis that helps the user understand bot
    * Get market comparison data
    */
   async getMarketComparisonData(tokenMentions) {
-    const topTokens = hederaTokenService.getTopTokens(5);
+    const topTokens = seiAgentService.getTopTokens ? seiAgentService.getTopTokens(5) : [];
     return {
       benchmarkTokens: topTokens.map(t => ({ symbol: t.symbol, priceUsd: t.priceUsd })),
-      marketTrend: 'Stable growth in Hedera ecosystem'
+      marketTrend: 'Market showing steady growth patterns'
     };
   }
 
@@ -1594,12 +2002,12 @@ Please provide detailed, data-driven analysis that helps the user understand bot
     
     // Provide defaults for missing analysis fields
     if (!aiAnalysis.analysis.marketOverview) {
-      aiAnalysis.analysis.marketOverview = `Hedera ecosystem analysis based on ${marketData.topTokens?.length || 0} tokens with total market cap of $${marketData.marketCap ? (marketData.marketCap / 1000000).toFixed(1) + 'M' : 'N/A'}.`;
+      aiAnalysis.analysis.marketOverview = `Market ecosystem analysis based on ${marketData.topTokens?.length || 0} tokens with total market cap of $${marketData.marketCap ? (marketData.marketCap / 1000000).toFixed(1) + 'M' : 'N/A'}.`;
     }
     
     if (!aiAnalysis.analysis.keyInsights || !Array.isArray(aiAnalysis.analysis.keyInsights)) {
       aiAnalysis.analysis.keyInsights = [
-        `Hedera network showing ${marketData.totalVolume > 50000000 ? 'high' : 'moderate'} trading activity`,
+        `Network showing ${marketData.totalVolume > 50000000 ? 'high' : 'moderate'} trading activity`,
         `${marketData.activeTokens || 0} tokens actively trading with established liquidity`,
         `Market focus on ${tokenMentions.length > 0 ? tokenMentions.join(', ') : 'general ecosystem development'}`
       ];
@@ -1607,7 +2015,7 @@ Please provide detailed, data-driven analysis that helps the user understand bot
     
     if (!aiAnalysis.actionableInsights || !Array.isArray(aiAnalysis.actionableInsights)) {
       aiAnalysis.actionableInsights = [
-        'Monitor Hedera ecosystem developments and partnership announcements',
+        'Monitor network ecosystem developments and protocol updates',
         'Consider dollar-cost averaging for long-term positions',
         'Set up price alerts for key support and resistance levels'
       ];
@@ -1616,7 +2024,7 @@ Please provide detailed, data-driven analysis that helps the user understand bot
     if (!aiAnalysis.riskWarnings || !Array.isArray(aiAnalysis.riskWarnings)) {
       aiAnalysis.riskWarnings = [
         'Cryptocurrency investments carry high volatility and risk of total loss',
-        'Hedera tokens may have limited liquidity compared to major cryptocurrencies',
+        'Some tokens may have limited liquidity compared to major cryptocurrencies',
         'Regulatory changes could impact token availability and trading'
       ];
     }
@@ -1665,19 +2073,19 @@ Please provide detailed, data-driven analysis that helps the user understand bot
     const currentTime = new Date().toLocaleString();
     const hasPortfolioData = tokenMentions.length > 0 && marketData.portfolioTokens && marketData.portfolioTokens.length > 0;
     
-    const systemPrompt = `You are a senior portfolio analyst and investment advisor specializing in the Hedera blockchain ecosystem. You provide comprehensive portfolio analysis, performance evaluation, and strategic recommendations for cryptocurrency investments.
+    const systemPrompt = `You are a senior portfolio analyst and investment advisor specializing in blockchain ecosystem analysis. You provide comprehensive portfolio analysis, performance evaluation, and strategic recommendations for cryptocurrency investments.
 
 EXPERTISE AREAS:
 - Portfolio performance analysis and optimization
 - Risk assessment and management strategies
-- Hedera ecosystem token evaluation
+- Blockchain ecosystem token evaluation
 - DeFi protocol analysis and yield strategies
 - Market sentiment and technical analysis
 - Investment psychology and behavioral finance
 
 FEEDBACK ANALYSIS APPROACH:
 1. Comprehensive portfolio evaluation based on mentioned tokens
-2. Performance analysis against Hedera ecosystem benchmarks
+2. Performance analysis against market ecosystem benchmarks
 3. Risk-adjusted return calculations and assessments
 4. Diversification analysis and recommendations
 5. Market timing and entry/exit strategy evaluation
@@ -1761,7 +2169,7 @@ MARKET CONTEXT:
 - Portfolio Tokens: ${tokenMentions.join(', ') || 'Not specified'}
 - Market Data Available: ${marketData.topTokens?.length || 0} tokens
 - Portfolio Coverage: ${hasPortfolioData ? 'Detailed data available' : 'Limited data'}
-- Hedera Ecosystem Status: ${marketData.hederaStats?.totalTokens || 500}+ tokens
+- Ecosystem Status: ${marketData.seiStats?.totalTokens || 450}+ tokens tracked
 
 ANALYSIS REQUIREMENTS:
 - Focus on actionable, specific recommendations
@@ -1794,11 +2202,11 @@ USER REQUEST: "${message}"
 FEEDBACK PARAMETERS:
 • Analysis Type: ${feedbackType}
 • Portfolio Focus: ${tokenMentions.length > 0 ? tokenMentions.join(', ') : 'General portfolio guidance'}
-• Market Context: Hedera ecosystem analysis
+• Market Context: Blockchain ecosystem analysis
 ${portfolioAnalysis}
 
 MARKET CONTEXT:
-• Hedera Market Cap: $${marketData.marketCap ? (marketData.marketCap / 1000000).toFixed(1) + 'M' : 'N/A'}
+• Total Market Cap: $${marketData.marketCap ? (marketData.marketCap / 1000000).toFixed(1) + 'M' : 'N/A'}
 • 24h Trading Volume: $${marketData.totalVolume ? (marketData.totalVolume / 1000000).toFixed(1) + 'M' : 'N/A'}
 • Active Tokens: ${marketData.topTokens?.filter(t => t.inTopPools).length || 0}
 
@@ -1813,12 +2221,12 @@ ANALYSIS REQUIREMENTS:
 SPECIFIC FOCUS AREAS:
 - Token allocation efficiency and balance
 - Risk-adjusted return optimization
-- Hedera ecosystem exposure and diversification
+- Blockchain ecosystem exposure and diversification
 - DeFi yield opportunities within portfolio
 - Market timing and rebalancing strategies
 - Cost optimization and fee management
 
-Please provide detailed, data-driven analysis that helps optimize portfolio performance while managing risk appropriately for the Hedera ecosystem.`;
+Please provide detailed, data-driven analysis that helps optimize portfolio performance while managing risk appropriately for the current market ecosystem.`;
 
     return {
       system: systemPrompt,
@@ -1888,11 +2296,11 @@ Please provide detailed, data-driven analysis that helps optimize portfolio perf
         });
       }
     } else {
-      portfolioOverview = 'General portfolio guidance for Hedera ecosystem. ';
+      portfolioOverview = 'General portfolio guidance for current market ecosystem. ';
       recommendations.push({
         type: 'add',
-        token: 'HBAR',
-        reasoning: 'Consider HBAR as core Hedera ecosystem exposure.',
+        token: 'SEI',
+        reasoning: 'Consider SEI as core network ecosystem exposure.',
         priority: 'medium',
         timeframe: 'long-term'
       });
@@ -1947,8 +2355,8 @@ Please provide detailed, data-driven analysis that helps optimize portfolio perf
    */
   generateBasicInsights(message, tokenMentions) {
     const insights = [
-      'Hedera ecosystem offers diverse investment opportunities across DeFi and enterprise tokens',
-      'Consider portfolio diversification across different token categories'
+      'Current ecosystem offers diverse investment opportunities across DeFi and various token categories',
+      'Consider portfolio diversification across different token categories and risk profiles'
     ];
     
     if (tokenMentions.length > 0) {
@@ -1969,12 +2377,12 @@ Please provide detailed, data-driven analysis that helps optimize portfolio perf
     const currentTime = new Date().toLocaleString();
     const hasTokenData = tokenMentions.length > 0 && marketData.strategyTokens && marketData.strategyTokens.length > 0;
     
-    const systemPrompt = `You are a senior investment strategist and portfolio manager specializing in cryptocurrency and DeFi investments within the Hedera ecosystem. You create comprehensive, data-driven investment strategies.
+    const systemPrompt = `You are a senior investment strategist and portfolio manager specializing in cryptocurrency and DeFi investments. You create comprehensive, data-driven investment strategies based on objective market analysis.
 
 EXPERTISE AREAS:
 - Multi-asset portfolio construction and optimization
 - Risk-adjusted return maximization strategies
-- Hedera ecosystem token evaluation and selection
+- Blockchain ecosystem token evaluation and selection
 - DeFi yield farming and staking strategies
 - Market timing and tactical asset allocation
 - Behavioral finance and investment psychology
@@ -2050,7 +2458,7 @@ RESPONSE FORMAT (STRICT JSON - STRATEGY METRICS):
 
 MARKET CONTEXT:
 - Analysis Time: ${currentTime}
-- Focus Tokens: ${tokenMentions.join(', ') || 'General Hedera ecosystem'}
+- Focus Tokens: ${tokenMentions.join(', ') || 'General market ecosystem'}
 - Market Data: ${marketData.topTokens?.length || 0} tokens available
 - Strategy Scope: ${hasTokenData ? 'Token-specific strategy' : 'Ecosystem-wide strategy'}
 - Market Cap: $${marketData.marketCap ? (marketData.marketCap / 1000000).toFixed(1) + 'M' : 'N/A'}
@@ -2083,8 +2491,8 @@ ${marketData.strategyTokens.map(item => `
 USER REQUEST: "${message}"
 
 STRATEGY PARAMETERS:
-• Focus: ${tokenMentions.length > 0 ? tokenMentions.join(', ') : 'Hedera ecosystem diversification'}
-• Market Context: Current Hedera market conditions
+• Focus: ${tokenMentions.length > 0 ? tokenMentions.join(', ') : 'Market ecosystem diversification'}
+• Market Context: Current market conditions and trends
 • Data Available: ${marketData.topTokens?.length || 0} tokens analyzed
 ${tokenAnalysis}
 
@@ -2101,7 +2509,7 @@ STRATEGY REQUIREMENTS:
 5. Performance Targets: Realistic return expectations with probabilities
 6. Monitoring Framework: Key metrics and rebalancing criteria
 
-Create a detailed, actionable strategy that balances growth potential with appropriate risk management for the Hedera ecosystem.`;
+Create a detailed, actionable strategy that balances growth potential with appropriate risk management based on current market analysis.`;
 
     return {
       system: systemPrompt,
@@ -2120,8 +2528,8 @@ Create a detailed, actionable strategy that balances growth potential with appro
     
     return {
       strategy: {
-        name: 'Balanced Hedera Strategy',
-        objective: 'Diversified exposure to Hedera ecosystem',
+        name: 'Balanced Market Strategy',
+        objective: 'Diversified exposure to current market ecosystem',
         riskLevel: 50,
         expectedReturn: 20.0,
         timeHorizon: '6-12 months',
@@ -2146,9 +2554,9 @@ Create a detailed, actionable strategy that balances growth potential with appro
           };
         }) : 
         [
-          { token: 'HBAR', targetWeight: 50, allocation: 'CORE', reasoning: 'Network foundation' },
-          { token: 'SAUCE', targetWeight: 25, allocation: 'DEFI', reasoning: 'DEX exposure' },
-          { token: 'USDC', targetWeight: 25, allocation: 'STABLE', reasoning: 'Stability buffer' }
+          { token: 'SEI', targetWeight: 40, allocation: 'CORE', reasoning: 'Network foundation' },
+          { token: 'USDC', targetWeight: 35, allocation: 'STABLE', reasoning: 'Stability buffer' },
+          { token: 'WBTC', targetWeight: 25, allocation: 'GROWTH', reasoning: 'Growth exposure' }
         ]
     };
   }
@@ -2175,8 +2583,8 @@ Create a detailed, actionable strategy that balances growth potential with appro
    */
   generateBasicStrategy(message, tokenMentions) {
     return {
-      name: 'Conservative Hedera Strategy',
-      allocation: 'HBAR 60%, SAUCE 20%, USDC 20%',
+      name: 'Conservative Market Strategy',
+      allocation: 'SEI 40%, USDC 35%, WBTC 25%',
       risk: 'Medium',
       timeline: '3-6 months',
       target: '15-25% returns'
@@ -2185,9 +2593,16 @@ Create a detailed, actionable strategy that balances growth potential with appro
 
   generateFallbackAnalysis(message, requestType, tokenMentions, marketData, aiError) {
     console.log('🔄 Generating intelligent fallback analysis...');
+    console.log('📊 Available MCP data:', {
+      hasTokenRecommendations: marketData.tokenRecommendations?.length > 0,
+      hasTopTokens: marketData.topTokens?.length > 0,
+      hasRealData: marketData.dataSource?.includes('MCP') || marketData.dataSource?.includes('SEI_PIPELINE'),
+      dataSource: marketData.dataSource
+    });
     
     const hasTokens = tokenMentions.length > 0;
     const hasMarketData = marketData.topTokens && marketData.topTokens.length > 0;
+    const hasMCPRecommendations = marketData.tokenRecommendations && marketData.tokenRecommendations.length > 0;
     
     // Generate market overview based on available data
     let marketOverview = '';
@@ -2197,9 +2612,13 @@ Create a detailed, actionable strategy that balances growth potential with appro
       const marketCapM = marketData.marketCap ? (marketData.marketCap / 1000000).toFixed(1) : 'N/A';
       const volumeM = marketData.totalVolume ? (marketData.totalVolume / 1000000).toFixed(1) : 'N/A';
       
-      marketOverview = `The Hedera ecosystem currently features ${totalTokens} tracked tokens with ${activeTokens} showing active trading. Total market capitalization stands at $${marketCapM}M with 24-hour trading volume of $${volumeM}M. ${marketData.totalVolume > 50000000 ? 'High trading activity suggests strong market engagement.' : 'Moderate trading activity indicates steady but cautious market participation.'}`;
+      if (marketData.dataSource === 'SEI_PIPELINE' && marketData.seiStats?.networkName) {
+        marketOverview = `The ${marketData.seiStats.networkName} ecosystem is showing ${activeTokens > totalTokens * 0.3 ? 'robust' : 'moderate'} trading activity across ${totalTokens} tracked pools. The SEI-EVM network features diverse token offerings including staked assets (stSEI), meme tokens, and DeFi protocols with a combined liquidity of $${marketCapM}K and daily volume of $${volumeM}K.`;
+      } else {
+        marketOverview = `The broader cryptocurrency market remains ${marketData.totalVolume > 50000000 ? 'highly active' : 'moderately active'}, while the SEI-EVM network is still in its early stages with limited liquidity and trading activity.`;
+      }
     } else {
-      marketOverview = 'Hedera ecosystem continues to develop with growing token adoption and DeFi protocol deployment. Market conditions reflect broader cryptocurrency trends with focus on sustainable growth and enterprise adoption.';
+      marketOverview = 'The broader crypto market is experiencing a mixed sentiment, with some tokens showing signs of recovery while others continue to struggle. The SEI-EVM network is still in its early stages, with limited market data available.';
     }
     
     // Generate token-specific insights
@@ -2213,73 +2632,169 @@ Create a detailed, actionable strategy that balances growth potential with appro
           tokenInsights.push(`${symbol} at $${token.priceUsd?.toFixed(6) || 'N/A'} showing ${trend}`);
         }
       });
+    } else if (marketData.dataSource === 'SEI_PIPELINE' && marketData.topTokens?.length > 0) {
+      // Add insights about the top tokens from SEI pipeline
+      const topActiveTokens = marketData.topTokens.filter(t => t.volume24h > 0).slice(0, 3);
+      topActiveTokens.forEach(token => {
+        tokenInsights.push(`${token.symbol} trading at $${parseFloat(token.priceUsd).toFixed(8) || 'N/A'} with $${parseFloat(token.volume24h).toFixed(2) || '0'} daily volume`);
+      });
     }
     
-    // Generate recommendations based on request type and available data
+    // Use MCP recommendations if available, otherwise generate fallback recommendations
     const recommendations = [];
-    if (requestType === 'token_specific' && hasTokens) {
+    if (hasMCPRecommendations) {
+      console.log('✅ Using MCP token recommendations from server');
+      marketData.tokenRecommendations.forEach(rec => {
+        const currentPrice = rec.currentPrice || 0;
+        const liquidity = rec.liquidity || 0;
+        const volume24h = rec.volume24h || 0;
+        const overallScore = rec.overallScore || 0;
+        
+        recommendations.push({
+          token: rec.token || rec.symbol,
+          action: volume24h > 1000000 ? 'BUY' : volume24h > 100000 ? 'WATCH' : 'RESEARCH',
+          confidence: Math.round((rec.confidence || 0.6) * 100),
+          targetPrice: currentPrice * 1.1, // 10% upside target
+          currentPrice: currentPrice,
+          upside: Math.round(10 + (overallScore - 70) * 0.5), // Dynamic upside based on score
+          riskScore: rec.riskScore || (rec.riskLevel === 'high' ? 80 : rec.riskLevel === 'low' ? 40 : 70),
+          timeframe: volume24h > 1000000 ? 'short-term' : 'medium-term',
+          reasoning: rec.reasoning || `${rec.name || rec.token} trading at $${currentPrice.toFixed(6)} with $${(liquidity/1000).toFixed(1)}K liquidity and $${(volume24h/1000).toFixed(1)}K daily volume. Score: ${overallScore}/100.`,
+          address: rec.address,
+          pool: rec.pool,
+          liquidity: liquidity,
+          volume24h: volume24h,
+          priceChange24h: rec.priceChange24h || 0
+        });
+      });
+    } else if (hasMarketData && marketData.topTokens.length > 0) {
+      // Use actual market data for recommendations
+      console.log('📈 Using real market data for recommendations');
+      const topTokensByVolume = marketData.topTokens
+        .filter(t => t.volume24h > 0)
+        .sort((a, b) => parseFloat(b.volume24h) - parseFloat(a.volume24h))
+        .slice(0, 3);
+      
+      topTokensByVolume.forEach(token => {
+        const volumeUSD = parseFloat(token.volume24h) || 0;
+        const priceUSD = parseFloat(token.priceUsd) || 0;
+        const riskScore = volumeUSD < 1000 ? 85 : volumeUSD < 10000 ? 75 : 65;
+        
+        recommendations.push({
+          token: token.symbol,
+          action: 'WATCH', 
+          confidence: volumeUSD > 1000 ? 70 : 50,
+          targetPrice: priceUSD,
+          currentPrice: priceUSD,
+          upside: Math.round(Math.random() * 50 + 10), // Estimated upside
+          riskScore: riskScore,
+          timeframe: volumeUSD > 5000 ? 'short-term' : 'medium-term',
+          reasoning: `${token.symbol} shows ${volumeUSD > 5000 ? 'strong' : 'moderate'} trading activity with $${volumeUSD.toFixed(2)} daily volume. ${riskScore > 75 ? 'Limited liquidity suggests higher risk.' : 'Established trading patterns indicate moderate risk.'}`
+        });
+      });
+    } else if (requestType === 'token_specific' && hasTokens) {
       tokenMentions.forEach(symbol => {
         const token = marketData.topTokens?.find(t => t.symbol.toUpperCase() === symbol.toUpperCase());
+        const currentPrice = parseFloat(token?.priceUsd) || 0.001; // Minimum non-zero price
+        const targetPrice = currentPrice > 0 ? currentPrice * 1.15 : 0.001;
+        
         recommendations.push({
-          type: 'watch',
           token: symbol,
-          reasoning: token ? 
-            `Monitor ${symbol} for ${token.change24h > 0 ? 'continuation of positive momentum' : 'potential reversal or support levels'}. Current price $${token.priceUsd?.toFixed(6) || 'N/A'}.` :
-            `Research ${symbol} fundamentals and trading history before taking positions.`,
-          confidence: 'medium',
+          action: 'WATCH',
+          confidence: token ? 60 : 40,
+          targetPrice: targetPrice,
+          currentPrice: currentPrice,
+          upside: currentPrice > 0 ? 15 : 0,
+          riskScore: 70,
           timeframe: 'medium-term',
-          riskLevel: 'medium'
+          reasoning: token ? 
+            `Monitor ${symbol} for ${token.change24h > 0 ? 'continuation of positive momentum' : 'potential reversal or support levels'}. Current price $${currentPrice.toFixed(8)}.` :
+            `Research ${symbol} fundamentals and trading history before taking positions.`
         });
       });
     } else {
       recommendations.push({
-        type: 'watch',
-        token: 'HBAR',
-        reasoning: 'HBAR as the native Hedera token provides exposure to overall network growth and adoption.',
-        confidence: 'medium',
+        token: 'SEI',
+        action: 'WATCH',
+        confidence: 60,
+        targetPrice: 0.52,
+        currentPrice: 0.45,
+        upside: 15.6,
+        riskScore: 70,
         timeframe: 'long-term',
-        riskLevel: 'medium'
+        reasoning: 'SEI network token with established infrastructure but limited current data availability.'
       });
     }
     
+    // Build comprehensive analysis using available data
+    const keyMetrics = {
+      avgPrice: hasMarketData ? marketData.topTokens.reduce((sum, t) => sum + (parseFloat(t.priceUsd) || 0), 0) / marketData.topTokens.length : 0,
+      avgChange24h: hasMarketData ? marketData.topTokens.reduce((sum, t) => sum + (parseFloat(t.change24h) || 0), 0) / marketData.topTokens.length : 0,
+      volatilityIndex: hasMarketData ? this.calculateVolatilityIndex(marketData.topTokens) : 0,
+      liquidityScore: hasMarketData && marketData.dataSource === 'SEI_PIPELINE' ? 20 : 0.2, // From original output
+      adoptionRate: marketData.dataSource === 'SEI_PIPELINE' ? 5 : 0.05
+    };
+
+    const technicalSignals = {
+      trend: keyMetrics.avgChange24h > 2 ? 'bullish' : keyMetrics.avgChange24h < -2 ? 'bearish' : 'sideways',
+      strength: Math.abs(keyMetrics.avgChange24h) > 5 ? 70 : 30,
+      support: 0,
+      resistance: 0,
+      rsi: 50,
+      volume: marketData.totalVolume || 0
+    };
+
+    const fundamentalScore = {
+      ecosystemHealth: marketData.dataSource === 'SEI_PIPELINE' ? 40 : 0.4,
+      developmentActivity: 60,
+      partnershipStrength: 20,
+      adoptionGrowth: 10,
+      overallScore: marketData.dataSource === 'SEI_PIPELINE' ? 32.5 : 0.33
+    };
+
     return {
       analysis: {
-        marketOverview,
+        marketOverview: {
+          summary: marketOverview,
+          totalMarketCap: marketData.marketCap || 0,
+          volume24h: marketData.totalVolume || 0,
+          activeTokens: marketData.activeTokens || 0,
+          marketChange24h: keyMetrics.avgChange24h,
+          sentiment: technicalSignals.trend === 'sideways' ? 'mixed' : technicalSignals.trend
+        },
+        keyMetrics,
+        technicalSignals,
+        fundamentalScore,
         keyInsights: [
-          marketOverview.split('.')[0] + '.',
-          ...tokenInsights,
-          'Hedera\'s energy-efficient consensus mechanism continues to attract enterprise adoption',
-          'DeFi ecosystem growth on Hedera provides additional utility for native tokens'
-        ].slice(0, 5),
-        technicalAnalysis: hasMarketData ? 
-          `Market showing ${marketData.totalVolume > 50000000 ? 'elevated' : 'moderate'} trading volumes. Key tokens maintaining liquidity across major trading pairs.` :
-          'Technical analysis limited due to data availability. Focus on major tokens with established trading history.',
-        fundamentalAnalysis: 'Hedera ecosystem continues maturing with enterprise partnerships, sustainable consensus, and growing DeFi infrastructure supporting long-term value proposition.',
-        hederaEcosystemHealth: `Ecosystem health appears ${marketData.activeTokens > 50 ? 'robust' : 'developing'} with ongoing protocol development and increasing token diversity.`
+          `Network showing ${marketData.totalVolume > 1000 ? 'moderate' : 'limited'} trading activity`,
+          `${marketData.activeTokens || 0} tokens actively trading with established liquidity`,
+          `Market focus on ${tokenMentions.length > 0 ? tokenMentions.join(', ') : 'SEI'}`
+        ]
       },
       recommendations,
+      marketContext: {
+        dataSource: marketData.dataSource || 'real-time_crypto_markets',
+        lastUpdated: marketData.timestamp || new Date().toISOString(),
+        tokensAnalyzed: hasMarketData ? marketData.topTokens.length : 1,
+        aiModel: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo'
+      },
       actionableInsights: [
-        'Start with small position sizes to understand market dynamics',
-        'Monitor SaucerSwap and other Hedera DEXs for liquidity trends',
-        'Follow Hedera council announcements for ecosystem updates',
-        'Consider dollar-cost averaging for long-term positions'
+        'Monitor network ecosystem developments and protocol updates',
+        'Consider dollar-cost averaging for long-term positions', 
+        'Set up price alerts for key support and resistance levels'
       ],
       riskWarnings: [
-        'AI analysis temporarily unavailable - relying on basic market data analysis',
-        'Hedera tokens may have limited liquidity compared to major cryptocurrencies',
-        'Market volatility can result in significant price swings',
-        'Always verify token contracts and use reputable exchanges'
+        'Cryptocurrency investments carry high volatility and risk of total loss',
+        'Some tokens may have limited liquidity compared to major cryptocurrencies',
+        'Regulatory changes could impact token availability and trading'
       ],
       nextSteps: [
-        'Verify token information through official Hedera sources',
-        'Research specific protocols and their tokenomics',
-        'Set up price alerts for tokens of interest',
-        'Consider your risk tolerance and investment timeline'
+        'Research specific tokens mentioned in analysis',
+        'Review your risk tolerance and investment timeline',
+        'Consider starting with small position sizes'
       ],
-      marketSentiment: marketData.totalVolume > 100000000 ? 'bullish' : 'neutral',
-      confidence: 'medium',
-      disclaimer: 'This fallback analysis is generated from available market data only. AI-powered analysis temporarily unavailable. Always conduct thorough research before making investment decisions.',
-      fallbackReason: `AI analysis failed: ${aiError.message}. Using market data-based analysis instead.`
+      confidence: hasMCPRecommendations ? 'medium' : 'low',
+      fallbackReason: `AI analysis failed: ${aiError.message}. Using ${hasMCPRecommendations ? 'MCP server data' : 'basic market data'} analysis instead.`
     };
   }
 
@@ -2340,7 +2855,7 @@ Create a detailed, actionable strategy that balances growth potential with appro
     const currentTime = new Date().toLocaleString();
     const hasTokenData = tokenMentions.length > 0 && marketData.strategyTokens && marketData.strategyTokens.length > 0;
     
-    const systemPrompt = `You are a senior DeFi investment strategist and portfolio manager specializing in the Hedera ecosystem with real-time market analysis capabilities. You create comprehensive, executable investment strategies with detailed action plans.
+    const systemPrompt = `You are a senior DeFi investment strategist and portfolio manager with real-time market analysis capabilities. You create comprehensive, executable investment strategies with detailed action plans based on objective market data.
 
 REAL-TIME MARKET CONTEXT:
 - Analysis Time: ${currentTime}
@@ -2428,7 +2943,7 @@ STRATEGY REQUIREMENTS:
 - Create executable action plans with specific tasks
 - Include trigger conditions for automated execution
 - Provide realistic timelines and risk management
-- Focus on Hedera ecosystem opportunities
+- Focus on current market ecosystem opportunities
 - Include both manual and automated execution options`;
 
     let tokenAnalysis = '';
@@ -2458,7 +2973,7 @@ STRATEGY PARAMETERS:
 ${tokenAnalysis}
 
 CURRENT MARKET SNAPSHOT:
-• Top Hedera Tokens by Volume:
+• Top Tokens by Volume:
 ${marketData.topTokens?.slice(0, 5).map(token => 
   `  - ${token.symbol}: $${token.priceUsd?.toFixed(6) || 'N/A'} (${token.change24h > 0 ? '+' : ''}${token.change24h?.toFixed(2) || '0.00'}%)`
 ).join('\n') || '  - No data available'}
@@ -2490,7 +3005,7 @@ Create a strategy that can be immediately saved to database and executed by an A
     // Ensure basic structure exists
     if (!strategyAnalysis.strategy) {
       strategyAnalysis.strategy = {
-        name: 'Hedera Ecosystem Strategy',
+        name: 'Market Ecosystem Strategy',
         type: 'Balanced',
         riskLevel: 50,
         expectedReturn: 20,
@@ -2620,7 +3135,7 @@ Create a strategy that can be immediately saved to database and executed by an A
       agentId: options.agentId,
       agentName: `Strategy Agent ${Date.now()}`,
       agentUuid: uuidv4(),
-      description: strategyAnalysis.strategy?.objective || 'AI-generated Hedera strategy',
+      description: strategyAnalysis.strategy?.objective || 'AI-generated market strategy',
       primaryStrategy: this.mapStrategyType(strategyAnalysis.strategy?.type),
       riskTolerance: this.mapRiskLevel(strategyAnalysis.strategy?.riskLevel),
       defaultBudget: 1000, // Default budget
@@ -2716,6 +3231,286 @@ Create a strategy that can be immediately saved to database and executed by an A
     return allocation;
   }
 
+  /**
+   * Parse MCP pool data into structured token format
+   * @param {string} mcpPoolData - Raw pool data from MCP
+   * @returns {Array} Structured token array
+   */
+  parseMCPPoolData(mcpPoolData) {
+    const tokens = [];
+    
+    try {
+      if (!mcpPoolData || typeof mcpPoolData !== 'string') {
+        return tokens;
+      }
+
+      // Try to parse as JSON first
+      try {
+        const parsed = JSON.parse(mcpPoolData);
+        if (Array.isArray(parsed)) {
+          return parsed.map(item => ({
+            symbol: item.symbol || item.base_token?.symbol || 'UNKNOWN',
+            name: item.name || item.base_token?.name || item.symbol || 'Unknown Token',
+            priceUsd: parseFloat(item.price_usd || item.price || 0),
+            marketCap: parseFloat(item.market_cap || item.fdv_usd || 0),
+            volume24h: parseFloat(item.volume_24h || item.volume || 0),
+            change24h: parseFloat(item.price_change_24h || 0),
+            inTopPools: true,
+            source: 'MCP'
+          }));
+        }
+      } catch (jsonError) {
+        // If not JSON, parse as text - handle MCP format:
+        // USDC / WSEI 0.01% (0x...)
+        //   Reserve: $1144902.5297
+        //   24h Volume: $3552766.119469
+        const lines = mcpPoolData.split('\n');
+        
+        let currentPool = null;
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          
+          // Check if this is a pool header line (contains / and %)
+          if (line.includes('/') && line.includes('%') && !line.startsWith('Reserve:') && !line.startsWith('24h Volume:')) {
+            // Extract token symbols from pool header: "USDC / WSEI 0.01%"
+            const poolMatch = line.match(/^(\w+)\s*\/\s*(\w+)/);
+            if (poolMatch) {
+              currentPool = {
+                symbol1: poolMatch[1],
+                symbol2: poolMatch[2],
+                reserve: 0,
+                volume24h: 0
+              };
+            }
+          }
+          // Check for Reserve line
+          else if (line.startsWith('Reserve:') && currentPool) {
+            const reserveMatch = line.match(/Reserve:\s*\$?([\d,.]+)/);
+            if (reserveMatch) {
+              currentPool.reserve = parseFloat(reserveMatch[1].replace(/,/g, ''));
+            }
+          }
+          // Check for 24h Volume line
+          else if (line.startsWith('24h Volume:') && currentPool) {
+            const volumeMatch = line.match(/24h Volume:\s*\$?([\d,.]+)/);
+            if (volumeMatch) {
+              currentPool.volume24h = parseFloat(volumeMatch[1].replace(/,/g, ''));
+              
+              // Add both tokens from the pool
+              if (currentPool.symbol1 && currentPool.symbol1 !== 'USDC' && currentPool.symbol1 !== 'USDT') {
+                tokens.push({
+                  symbol: currentPool.symbol1,
+                  name: currentPool.symbol1,
+                  priceUsd: 0, // We don't have individual token prices from pool data
+                  marketCap: 0,
+                  volume24h: currentPool.volume24h,
+                  change24h: 0,
+                  liquidity: currentPool.reserve,
+                  inTopPools: true,
+                  source: 'MCP'
+                });
+              }
+              
+              if (currentPool.symbol2 && currentPool.symbol2 !== 'USDC' && currentPool.symbol2 !== 'USDT') {
+                // Check if this token is already added
+                const existing = tokens.find(t => t.symbol === currentPool.symbol2);
+                if (!existing) {
+                  tokens.push({
+                    symbol: currentPool.symbol2,
+                    name: currentPool.symbol2,
+                    priceUsd: 0,
+                    marketCap: 0,
+                    volume24h: currentPool.volume24h,
+                    change24h: 0,
+                    liquidity: currentPool.reserve,
+                    inTopPools: true,
+                    source: 'MCP'
+                  });
+                } else {
+                  // Update existing token with additional volume/liquidity
+                  existing.volume24h += currentPool.volume24h;
+                  existing.liquidity += currentPool.reserve;
+                }
+              }
+              
+              currentPool = null; // Reset for next pool
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to parse MCP pool data:', error.message);
+    }
+
+    return tokens;
+  }
+
+  /**
+   * Parse MCP token recommendations
+   * @param {string} mcpRecommendationData - Raw recommendation data from MCP
+   * @returns {Array} Structured recommendations array
+   */
+  parseMCPRecommendations(mcpRecommendationData) {
+    const recommendations = [];
+    
+    try {
+      console.log('🔍 [MCP PARSER] Parsing MCP recommendation data type:', typeof mcpRecommendationData);
+      console.log('🔍 [MCP PARSER] Data preview:', JSON.stringify(mcpRecommendationData).substring(0, 300) + '...');
+      
+      // Handle different data formats
+      if (!mcpRecommendationData) {
+        console.warn('⚠️ [MCP PARSER] No recommendation data provided');
+        return recommendations;
+      }
+
+      // If it's already an object with tokens array (from HTTP API)
+      if (typeof mcpRecommendationData === 'object' && mcpRecommendationData.tokens) {
+        console.log('✅ [MCP PARSER] Processing structured tokens array');
+        return mcpRecommendationData.tokens.map(item => ({
+          token: item.token?.symbol || item.symbol,
+          name: item.token?.name || item.name,
+          reasoning: `Trust: ${item.trustScore}/100, Risk: ${item.riskScore}/100, Overall: ${item.overallScore?.toFixed(1)}/100`,
+          confidence: item.overallScore ? item.overallScore / 100 : 0.7,
+          riskLevel: item.riskScore > 70 ? 'high' : item.riskScore > 40 ? 'medium' : 'low',
+          currentPrice: item.token?.price_usd,
+          liquidity: item.pool?.reserve_in_usd,
+          volume24h: item.pool?.volume_usd?.h24,
+          source: 'MCP_AI'
+        }));
+      }
+
+      // If it's a string, try to parse as JSON first
+      if (typeof mcpRecommendationData === 'string') {
+        try {
+          const parsed = JSON.parse(mcpRecommendationData);
+          if (parsed.tokens && Array.isArray(parsed.tokens)) {
+            console.log('✅ [MCP PARSER] Processing JSON tokens array');
+            return parsed.tokens.map(item => ({
+              token: item.token?.symbol || item.symbol,
+              name: item.token?.name || item.name,
+              reasoning: `Trust: ${item.trustScore}/100, Risk: ${item.riskScore}/100, Overall: ${item.overallScore?.toFixed(1)}/100`,
+              confidence: item.overallScore ? item.overallScore / 100 : 0.7,
+              riskLevel: item.riskScore > 70 ? 'high' : item.riskScore > 40 ? 'medium' : 'low',
+              currentPrice: item.token?.price_usd,
+              liquidity: item.pool?.reserve_in_usd,
+              volume24h: item.pool?.volume_usd?.h24,
+              source: 'MCP_AI'
+            }));
+          }
+          if (Array.isArray(parsed)) {
+            return parsed.map(item => ({
+              token: item.token || item.symbol,
+              reasoning: item.reasoning || item.reason || 'AI recommendation',
+              confidence: item.confidence || 0.7,
+              riskLevel: item.risk_level || item.risk || 'medium',
+              source: 'MCP_AI'
+            }));
+          }
+        } catch (jsonError) {
+          // Parse the structured text format from MCP server
+          const lines = mcpRecommendationData.split('\n');
+          let currentToken = null;
+          
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            
+            // Match token entries like "1. MILLI (MILLI)" or "2. stSEI (STSEI)"
+            const tokenMatch = trimmedLine.match(/^\d+\.\s+(.+?)\s*\(([^)]+)\)/);
+            if (tokenMatch) {
+              const tokenName = tokenMatch[1].trim();
+              const tokenSymbol = tokenMatch[2].trim();
+            
+            currentToken = {
+              token: tokenSymbol,
+              name: tokenName,
+              reasoning: 'AI-powered token analysis from SEI network data',
+              confidence: 0.6,
+              riskLevel: 'medium',
+              source: 'MCP_AI',
+              // Initialize with defaults that will be updated as we parse more details
+              currentPrice: 0,
+              targetPrice: 0,
+              riskScore: 70,
+              timeframe: 'medium-term'
+            };
+            recommendations.push(currentToken);
+            continue;
+          }
+          
+          // Parse token details if we're currently processing a token
+          if (currentToken) {
+            // Extract current price with better regex
+            const priceMatch = trimmedLine.match(/Current Price:\s*\$([0-9]*\.?[0-9]+)/);
+            if (priceMatch) {
+              currentToken.currentPrice = parseFloat(priceMatch[1]);
+            }
+            
+            // Extract liquidity with better regex
+            const liquidityMatch = trimmedLine.match(/Liquidity:\s*\$([0-9]*\.?[0-9]+)/);
+            if (liquidityMatch) {
+              currentToken.liquidity = parseFloat(liquidityMatch[1]);
+            }
+            
+            // Extract volume with better regex
+            const volumeMatch = trimmedLine.match(/24h Volume:\s*\$([0-9]*\.?[0-9]+)/);
+            if (volumeMatch) {
+              currentToken.volume24h = parseFloat(volumeMatch[1]);
+            }
+            
+            // Extract price change
+            const changeMatch = trimmedLine.match(/24h Price Change:\s*([+-]?[\d.]+)%/);
+            if (changeMatch) {
+              currentToken.priceChange24h = parseFloat(changeMatch[1]);
+            }
+            
+            // Extract overall score
+            const scoreMatch = trimmedLine.match(/Overall Score:\s*([\d.]+)\/100/);
+            if (scoreMatch) {
+              currentToken.overallScore = parseFloat(scoreMatch[1]);
+              currentToken.confidence = parseFloat(scoreMatch[1]) / 100; // Convert to 0-1 scale
+            }
+            
+            // Extract risk score
+            const riskScoreMatch = trimmedLine.match(/Risk Score:\s*([\d.]+)\/100/);
+            if (riskScoreMatch) {
+              currentToken.riskScore = parseFloat(riskScoreMatch[1]);
+              // Convert risk score to risk level
+              const riskValue = parseFloat(riskScoreMatch[1]);
+              currentToken.riskLevel = riskValue > 80 ? 'high' : riskValue > 60 ? 'medium' : 'low';
+            }
+            
+            // Extract address
+            const addressMatch = trimmedLine.match(/Address:\s*(0x[a-fA-F0-9]+)/);
+            if (addressMatch) {
+              currentToken.address = addressMatch[1];
+            }
+            
+            // Extract pool info
+            const poolMatch = trimmedLine.match(/Pool:\s*(.+)/);
+            if (poolMatch) {
+              currentToken.pool = poolMatch[1].trim();
+            }
+            
+            // Build comprehensive reasoning based on parsed data
+            if (currentToken.liquidity && currentToken.volume24h) {
+              const liquidityK = (currentToken.liquidity / 1000).toFixed(1);
+              const volumeText = currentToken.volume24h > 1000 ? `$${(currentToken.volume24h / 1000).toFixed(1)}K` : `$${currentToken.volume24h.toFixed(2)}`;
+              const trendText = (currentToken.priceChange24h || 0) > 0 ? 'positive momentum' : 'consolidation';
+              
+              currentToken.reasoning = `${currentToken.name} (${currentToken.token}) trading at $${currentToken.currentPrice?.toFixed(8) || 'N/A'} with $${liquidityK}K liquidity and ${volumeText} daily volume. Currently showing ${trendText}. ${currentToken.riskLevel === 'high' ? 'Higher risk due to limited liquidity.' : 'Moderate risk with established trading patterns.'}`;
+            }
+          }
+        }
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to parse MCP recommendations:', error.message);
+    }
+
+    console.log(`✅ Parsed ${recommendations.length} MCP recommendations:`, recommendations.map(r => r.token).join(', '));
+    return recommendations;
+  }
+
   // ===== END HELPER METHODS =====
 
   /**
@@ -2742,6 +3537,38 @@ Create a strategy that can be immediately saved to database and executed by an A
       if (intentResult.validation.isValid && intentResult.classification.type === 'actions') {
         // Process the complete action
         console.log('✅ Action is complete, processing...');
+        
+        // Special handling for transfer actions - use Enhanced Transfer Service
+        if (intentResult.classification?.actionSubtype === 'transfer' || intentResult.extraction?.actionType === 'transfer') {
+          console.log('💸 Transfer action detected - using Enhanced Transfer Service');
+          
+          try {
+            const EnhancedTransferService = require('../services/enhancedTransferService');
+            const transferService = new EnhancedTransferService();
+            
+            const transferResult = await transferService.processTransferRequest(message, userId);
+            
+            return res.json({
+              success: transferResult.success,
+              type: 'transfer',
+              data: transferResult,
+              timestamp: new Date().toISOString()
+            });
+            
+          } catch (transferError) {
+            console.error('❌ Enhanced Transfer Service error:', transferError);
+            
+            return res.json({
+              success: false,
+              type: 'transferError',
+              data: {
+                intent: intentResult,
+                error: transferError.message
+              },
+              timestamp: new Date().toISOString()
+            });
+          }
+        }
         
         try {
           const actionResult = await actionsProcessingService.executeAction(
@@ -2792,8 +3619,8 @@ Create a strategy that can be immediately saved to database and executed by an A
 
       // For non-action messages, route to appropriate handler
       if (intentResult.classification.type === 'strategy') {
-        // Handle strategy creation
-        const strategyResult = await this.handleStrategyMessage(message, userId);
+        // Handle strategy creation with enhanced market data
+        const strategyResult = await this.handleEnhancedStrategyMessage(message, userId);
         return res.json({
           success: true,
           type: 'strategy',
@@ -2806,8 +3633,8 @@ Create a strategy that can be immediately saved to database and executed by an A
       }
 
       if (intentResult.classification.type === 'information') {
-        // Handle information request
-        const infoResult = await this.handleInformationMessage(message, userId);
+        // Handle information request with comprehensive market intelligence
+        const infoResult = await this.handleEnhancedInformationMessage(message, userId);
         return res.json({
           success: true,
           type: 'information',
@@ -2871,8 +3698,20 @@ Create a strategy that can be immediately saved to database and executed by an A
       
       console.log('✅ Updated intent result:', JSON.stringify(updatedIntent, null, 2));
 
-      // Check if we now have all required arguments
-      if (updatedIntent.isComplete && updatedIntent.classification.type === 'actions') {
+      // Check if this is a transfer response from Enhanced Transfer Service
+      if (updatedIntent.type === 'transfer' || updatedIntent.recipientQuery || 
+          (updatedIntent.status && ['wallet_error', 'recipient_not_found', 'insufficient_funds', 'success'].includes(updatedIntent.status))) {
+        console.log('✅ Enhanced Transfer Service response received');
+        return res.json({
+          success: updatedIntent.success || false,
+          type: 'transfer',
+          data: updatedIntent,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Check if we now have all required arguments (for non-transfer actions)
+      if (updatedIntent.isComplete && updatedIntent.classification?.type === 'actions') {
         console.log('✅ All arguments provided, executing action...');
         
         try {
@@ -3169,29 +4008,53 @@ Create a strategy that can be immediately saved to database and executed by an A
     return token && token.priceUsd ? parseFloat(token.priceUsd) : 0;
   }
 
-  /**
-   * Handle information requests
+    /**
+   * Handle information requests with enhanced market intelligence
    * @param {string} message - User message
    * @param {string} userId - User ID
    * @returns {Object} Information response
    */
-  async handleInformationMessage(message, userId) {
+  async handleEnhancedInformationMessage(message, userId) {
     try {
-      // Use the existing information processing
-      const result = await this.processInformation(message, {
+      console.log('🔍 Enhanced information processing with comprehensive market intelligence...');
+      
+      // Detect network mentions in the message
+      const networkMentions = this.extractNetworkMentions(message);
+      const defaultNetwork = networkMentions.length > 0 ? networkMentions[0] : 'sei-evm';
+      
+      console.log(`🌐 Detected network: ${defaultNetwork}`);
+      
+      // Extract user preferences
+      const riskPreference = this.extractRiskPreference(message);
+      const tokenTypePreference = this.extractTokenTypePreference(message);
+      
+      console.log(`🎯 User preferences - Risk: ${riskPreference}, Token Types: ${tokenTypePreference.join(', ') || 'any'}`);
+      
+      // Get ALL tokens with risk/profit scoring from MCP
+      const allTokensIntelligence = await this.getAllTokensWithScoring(defaultNetwork, message);
+      
+      console.log('🎯 Processing information with comprehensive token analysis and scoring...');
+      
+      // Use the enhanced processing with all tokens data and user preferences
+      const result = await this.processInformationWithAllTokensAnalysis(message, {
         type: 'information',
-        confidence: 0.8,
-        reasoning: 'Information request processed'
-      });
+        confidence: 0.9,
+        reasoning: 'Enhanced information request with comprehensive token analysis and scoring',
+        riskPreference: riskPreference,
+        tokenTypePreference: tokenTypePreference
+      }, allTokensIntelligence, defaultNetwork);
+      
+      console.log('✅ Enhanced information processing completed with market intelligence!');
       
       return result;
     } catch (error) {
-      console.error('Information handling error:', error);
+      console.error('Enhanced information handling error:', error);
       return {
         type: 'information',
         result: {
           answer: 'I apologize, but I encountered an error while processing your information request. Please try again.',
-          category: 'error'
+          category: 'error',
+          error: error.message
         },
         status: 'error'
       };
@@ -3199,30 +4062,1117 @@ Create a strategy that can be immediately saved to database and executed by an A
   }
 
   /**
-   * Handle strategy requests  
+   * Handle information requests (fallback)
+   * @param {string} message - User message
+   * @param {string} userId - User ID
+   * @returns {Object} Information response
+   */
+  async handleInformationMessage(message, userId) {
+    console.log('⚠️ Using fallback information handler - consider using enhanced version');
+    return this.handleEnhancedInformationMessage(message, userId);
+  }
+
+  /**
+   * Handle strategy requests with enhanced market intelligence
+   * @param {string} message - User message
+   * @param {string} userId - User ID
+   * @returns {Object} Strategy response
+   */
+  async handleEnhancedStrategyMessage(message, userId) {
+    try {
+      console.log('📈 Enhanced strategy processing with market intelligence...');
+      
+      // Detect network mentions in the message
+      const networkMentions = this.extractNetworkMentions(message);
+      const defaultNetwork = networkMentions.length > 0 ? networkMentions[0] : 'sei-evm';
+      
+      console.log(`🌐 Detected network for strategy: ${defaultNetwork}`);
+      
+      // Get comprehensive market intelligence for strategy building
+      const marketIntelligence = await this.getComprehensiveMarketIntelligence(defaultNetwork, message);
+      
+      // Use the existing strategy processing with enhanced data
+      const result = await this.processStrategy(message, {
+        type: 'strategy',
+        confidence: 0.9,
+        reasoning: 'Enhanced strategy request with comprehensive market intelligence'
+      }, { userId });
+      
+      // Enhance the result with market intelligence
+      if (result && result.result) {
+        result.result.marketIntelligence = marketIntelligence;
+        result.result.networkAnalyzed = defaultNetwork;
+        result.result.enhancedFeatures = {
+          newOpportunities: marketIntelligence.newTokens?.length || 0,
+          emergingPools: marketIntelligence.newPools?.length || 0,
+          trendingMarkets: marketIntelligence.trendingPools?.length || 0
+        };
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Enhanced strategy handling error:', error);
+      return {
+        type: 'strategy',
+        result: {
+          response: 'I apologize, but I encountered an error while processing your strategy request. Please try again.',
+          strategyType: 'error',
+          error: error.message
+        },
+        status: 'error'
+      };
+    }
+  }
+
+  /**
+   * Handle strategy requests (fallback)
    * @param {string} message - User message
    * @param {string} userId - User ID
    * @returns {Object} Strategy response
    */
   async handleStrategyMessage(message, userId) {
+    console.log('⚠️ Using fallback strategy handler - consider using enhanced version');
+    return this.handleEnhancedStrategyMessage(message, userId);
+  }
+
+  /**
+   * Get ALL tokens with risk and profit scoring
+   * @param {string} network - Network to analyze 
+   * @param {string} message - Original user message for context
+   * @returns {Object} All tokens with comprehensive scoring
+   */
+  async getAllTokensWithScoring(network, message) {
+    console.log(`🌊 Getting ALL tokens with risk/profit scoring for ${network}...`);
+    
+    const tokenAnalysis = {
+      network: network,
+      timestamp: new Date().toISOString(),
+      allTokens: [],
+      summary: {},
+      dataSource: 'Enhanced MCP - All Tokens'
+    };
+
     try {
-      // Use the existing strategy processing
-      const result = await this.processStrategy(message, {
-        type: 'strategy',
-        confidence: 0.8,
-        reasoning: 'Strategy request processed'
-      }, { userId });
-      
-      return result;
+      if (mcpMarketDataService && mcpMarketDataService.isConnected) {
+        console.log(`✅ MCP Service connected, fetching ALL tokens with scoring...`);
+
+        // Get ALL tokens with risk/profit analysis
+        const allTokensResponse = await mcpMarketDataService.callTool('get_all_tokens', {
+          network: network,
+          includeScoring: true
+        }).catch(error => {
+          console.warn('⚠️ All tokens fetch failed:', error.message);
+          return { content: [{ text: 'All Tokens: Error fetching data' }] };
+        });
+
+        console.log(`🔄 Fetching comprehensive token analysis...`);
+
+        // Process all tokens data with scoring
+        if (allTokensResponse.content && allTokensResponse.content[0]) {
+          const allTokensText = allTokensResponse.content[0].text;
+          const tokenMatch = allTokensText.match(/Tokens Found: (\d+)/);
+          const tokenCount = tokenMatch ? parseInt(tokenMatch[1]) : 0;
+          
+          tokenAnalysis.allTokens = {
+            count: tokenCount,
+            data: allTokensText,
+            summary: `Found ${tokenCount} tokens with comprehensive risk/profit analysis`
+          };
+          console.log(`🌊 All tokens: ${tokenCount} found with scoring`);
+        }
+
+        // Create comprehensive summary
+        tokenAnalysis.summary = {
+          totalTokensAnalyzed: tokenAnalysis.allTokens.count || 0,
+          analysisType: 'comprehensive_scoring',
+          networkHealth: this.assessNetworkHealthFromAllTokens(tokenAnalysis),
+          riskManagement: 'Comprehensive risk scoring applied to all tokens',
+          diversificationOpportunities: 'Full token universe available for analysis'
+        };
+
+        console.log(`✅ All tokens analysis complete: ${tokenAnalysis.summary.totalTokensAnalyzed} tokens with risk/profit scoring`);
+
+      } else {
+        console.warn('⚠️ MCP Service not available, using basic analysis');
+        tokenAnalysis.summary = {
+          error: 'MCP service not available',
+          fallback: true
+        };
+      }
+
     } catch (error) {
-      console.error('Strategy handling error:', error);
+      console.error('❌ Failed to get all tokens analysis:', error.message);
+      tokenAnalysis.summary = {
+        error: error.message,
+        fallback: true
+      };
+    }
+
+    return tokenAnalysis;
+  }
+
+  /**
+   * Get comprehensive market intelligence using new MCP features (DEPRECATED - use getAllTokensWithScoring)
+   * @param {string} network - Network to analyze
+   * @param {string} message - Original user message for context
+   * @returns {Object} Comprehensive market intelligence
+   */
+  async getComprehensiveMarketIntelligence(network, message) {
+    console.log(`🧠 Getting comprehensive market intelligence for ${network}...`);
+    
+    const intelligence = {
+      network: network,
+      timestamp: new Date().toISOString(),
+      newPools: [],
+      newTokens: [],
+      trendingPools: [],
+      summary: {},
+      dataSource: 'Enhanced MCP'
+    };
+
+    try {
+      if (mcpMarketDataService && mcpMarketDataService.isConnected) {
+        console.log(`✅ MCP Service connected, fetching comprehensive data...`);
+
+        // Parallel fetch of all new MCP features
+        const promises = [
+          mcpMarketDataService.callTool('get_new_pools', {
+            network: network,
+            hours_back: 24
+          }).catch(error => {
+            console.warn('⚠️ New pools fetch failed:', error.message);
+            return { content: [{ text: 'New Pools: Error fetching data' }] };
+          }),
+
+          mcpMarketDataService.callTool('get_trending_pools', {
+            network: network
+          }).catch(error => {
+            console.warn('⚠️ Trending pools fetch failed:', error.message);
+            return { content: [{ text: 'Trending Pools: Error fetching data' }] };
+          }),
+
+          mcpMarketDataService.callTool('get_new_tokens', {
+            network: network,
+            count: 10
+          }).catch(error => {
+            console.warn('⚠️ New tokens fetch failed:', error.message);
+            return { content: [{ text: 'New Tokens: Error fetching data' }] };
+          })
+        ];
+
+        console.log(`🔄 Fetching data from 3 enhanced MCP endpoints...`);
+        const [newPoolsResponse, trendingPoolsResponse, newTokensResponse] = await Promise.all(promises);
+
+        // Process new pools data
+        if (newPoolsResponse.content && newPoolsResponse.content[0]) {
+          const newPoolsText = newPoolsResponse.content[0].text;
+          const poolMatch = newPoolsText.match(/Found: (\d+) pools/);
+          const poolCount = poolMatch ? parseInt(poolMatch[1]) : 0;
+          
+          intelligence.newPools = {
+            count: poolCount,
+            data: newPoolsText,
+            summary: `Found ${poolCount} new pools in the last 24 hours`
+          };
+          console.log(`🆕 New pools: ${poolCount} found`);
+        }
+
+        // Process trending pools data
+        if (trendingPoolsResponse.content && trendingPoolsResponse.content[0]) {
+          const trendingText = trendingPoolsResponse.content[0].text;
+          const trendingMatch = trendingText.match(/Found: (\d+) trending pools/);
+          const trendingCount = trendingMatch ? parseInt(trendingMatch[1]) : 0;
+          
+          intelligence.trendingPools = {
+            count: trendingCount,
+            data: trendingText,
+            summary: `Found ${trendingCount} trending pools with high activity`
+          };
+          console.log(`📈 Trending pools: ${trendingCount} found`);
+        }
+
+        // Process new tokens data
+        if (newTokensResponse.content && newTokensResponse.content[0]) {
+          const tokensText = newTokensResponse.content[0].text;
+          const tokenMatch = tokensText.match(/Found: (\d+) new tokens/);
+          const tokenCount = tokenMatch ? parseInt(tokenMatch[1]) : 0;
+          
+          intelligence.newTokens = {
+            count: tokenCount,
+            data: tokensText,
+            summary: `Discovered ${tokenCount} newly listed tokens`
+          };
+          console.log(`🎯 New tokens: ${tokenCount} found`);
+        }
+
+        // Create comprehensive summary
+        intelligence.summary = {
+          totalNewOpportunities: (intelligence.newPools.count || 0) + (intelligence.newTokens.count || 0),
+          marketActivity: intelligence.trendingPools.count || 0,
+          networkHealth: this.assessNetworkHealth(intelligence),
+          investmentOpportunities: this.assessInvestmentOpportunities(intelligence),
+          riskFactors: this.assessRiskFactors(intelligence)
+        };
+
+        console.log(`✅ Comprehensive market intelligence complete: ${intelligence.summary.totalNewOpportunities} new opportunities, ${intelligence.summary.marketActivity} trending markets`);
+
+      } else {
+        console.warn('⚠️ MCP Service not available, using basic intelligence');
+        intelligence.summary = {
+          error: 'MCP service not available',
+          fallback: true
+        };
+      }
+
+    } catch (error) {
+      console.error('❌ Failed to get comprehensive market intelligence:', error.message);
+      intelligence.summary = {
+        error: error.message,
+        fallback: true
+      };
+    }
+
+    return intelligence;
+  }
+
+  /**
+   * Extract risk preference from user message
+   * @param {string} message - User message
+   * @returns {string} Risk preference (low, medium, high, balanced)
+   */
+  extractRiskPreference(message) {
+    const lowerMessage = message.toLowerCase();
+    
+    // High risk keywords
+    const highRiskKeywords = ['high risk', 'risky', 'aggressive', 'speculative', 'volatile', 'meme', 'gambling', 'yolo'];
+    if (highRiskKeywords.some(keyword => lowerMessage.includes(keyword))) {
+      return 'high';
+    }
+    
+    // Low risk keywords (ENHANCED - including "without risk", "no risk")
+    const lowRiskKeywords = [
+      'low risk', 'safe', 'conservative', 'stable', 'secure', 'stablecoin', 'blue chip',
+      'without risk', 'no risk', 'risk free', 'risk-free', 'zero risk', 'minimal risk',
+      'safest', 'most secure', 'guaranteed', 'protected', 'capital preservation'
+    ];
+    if (lowRiskKeywords.some(keyword => lowerMessage.includes(keyword))) {
+      return 'low';
+    }
+    
+    // Medium risk keywords
+    const mediumRiskKeywords = ['medium risk', 'moderate', 'balanced', 'diversified'];
+    if (mediumRiskKeywords.some(keyword => lowerMessage.includes(keyword))) {
+      return 'medium';
+    }
+    
+    // Default to balanced if no specific preference
+    return 'balanced';
+  }
+
+  /**
+   * Extract token type preference from user message
+   * @param {string} message - User message
+   * @returns {Array} Preferred token types
+   */
+  extractTokenTypePreference(message) {
+    const lowerMessage = message.toLowerCase();
+    const preferences = [];
+    
+    if (lowerMessage.includes('stablecoin') || lowerMessage.includes('stable')) {
+      preferences.push('stablecoin');
+    }
+    if (lowerMessage.includes('meme') || lowerMessage.includes('doge') || lowerMessage.includes('shib')) {
+      preferences.push('meme');
+    }
+    if (lowerMessage.includes('defi') || lowerMessage.includes('swap') || lowerMessage.includes('farm')) {
+      preferences.push('defi');
+    }
+    if (lowerMessage.includes('wrapped') || lowerMessage.includes('weth') || lowerMessage.includes('wbtc')) {
+      preferences.push('wrapped');
+    }
+    if (lowerMessage.includes('utility') || lowerMessage.includes('governance')) {
+      preferences.push('utility');
+    }
+    
+    return preferences;
+  }
+
+  /**
+   * Extract network mentions from user message
+   * @param {string} message - User message
+   * @returns {Array} Array of detected networks
+   */
+  extractNetworkMentions(message) {
+    const lowerMessage = message.toLowerCase();
+    const networks = [];
+
+    // Network keyword mappings
+    const networkKeywords = {
+      'sei-evm': ['sei', 'sei-evm', 'sei network', 'seinetwork'],
+      'eth': ['ethereum', 'eth', 'ether'],
+      'bsc': ['bsc', 'binance', 'bnb', 'binance smart chain'],
+      'polygon_pos': ['polygon', 'matic', 'poly'],
+      'arbitrum': ['arbitrum', 'arb'],
+      'optimism': ['optimism', 'op'],
+      'avax': ['avalanche', 'avax'],
+      'ftm': ['fantom', 'ftm'],
+      'base': ['base', 'coinbase'],
+      'cro': ['cronos', 'cro']
+    };
+
+    for (const [networkId, keywords] of Object.entries(networkKeywords)) {
+      if (keywords.some(keyword => lowerMessage.includes(keyword))) {
+        networks.push(networkId);
+      }
+    }
+
+    // Default to sei-evm if no network mentioned
+    if (networks.length === 0) {
+      networks.push('sei-evm');
+    }
+
+    return networks;
+  }
+
+  /**
+   * Assess network health based on market intelligence
+   * @param {Object} intelligence - Market intelligence data
+   * @returns {string} Health assessment
+   */
+  assessNetworkHealth(intelligence) {
+    const newPools = intelligence.newPools?.count || 0;
+    const newTokens = intelligence.newTokens?.count || 0;
+    const trending = intelligence.trendingPools?.count || 0;
+
+    if (newPools > 5 && newTokens > 3) return 'Excellent - High growth activity';
+    if (newPools > 2 && newTokens > 1) return 'Good - Steady development';
+    if (trending > 0) return 'Active - Existing market engagement';
+    return 'Stable - Established market conditions';
+  }
+
+  /**
+   * Assess investment opportunities based on market intelligence
+   * @param {Object} intelligence - Market intelligence data
+   * @returns {Array} Investment opportunities
+   */
+  assessInvestmentOpportunities(intelligence) {
+    const opportunities = [];
+
+    if (intelligence.newTokens?.count > 0) {
+      opportunities.push(`Early adoption opportunities: ${intelligence.newTokens.count} new tokens detected`);
+    }
+
+    if (intelligence.newPools?.count > 0) {
+      opportunities.push(`Liquidity provision opportunities: ${intelligence.newPools.count} new pools available`);
+    }
+
+    if (intelligence.trendingPools?.count > 0) {
+      opportunities.push(`Active trading opportunities: ${intelligence.trendingPools.count} trending pools with high volume`);
+    }
+
+    if (opportunities.length === 0) {
+      opportunities.push('Market consolidation phase - consider established positions');
+    }
+
+    return opportunities;
+  }
+
+  /**
+   * Assess risk factors based on market intelligence
+   * @param {Object} intelligence - Market intelligence data
+   * @returns {Array} Risk factors
+   */
+  assessRiskFactors(intelligence) {
+    const risks = [];
+
+    if (intelligence.newTokens?.count > 5) {
+      risks.push('High new token activity - Exercise caution with unverified projects');
+    }
+
+    if (intelligence.trendingPools?.count === 0 && intelligence.newPools?.count === 0) {
+      risks.push('Low market activity - Potential liquidity concerns');
+    }
+
+    if (intelligence.newPools?.count > 10) {
+      risks.push('Potential market fragmentation - Liquidity may be spread thin');
+    }
+
+    if (risks.length === 0) {
+      risks.push('Standard market risks apply - Always do your own research');
+    }
+
+    return risks;
+  }
+
+  /**
+   * Assess network health from all tokens analysis
+   * @param {Object} tokenAnalysis - All tokens analysis data
+   * @returns {string} Health assessment
+   */
+  assessNetworkHealthFromAllTokens(tokenAnalysis) {
+    const totalTokens = tokenAnalysis.allTokens?.count || 0;
+    
+    if (totalTokens > 100) return 'Excellent - Diverse token ecosystem';
+    if (totalTokens > 50) return 'Good - Growing token landscape';
+    if (totalTokens > 20) return 'Active - Moderate token activity';
+    return 'Developing - Limited token diversity';
+  }
+
+  /**
+   * Build AI prompt for comprehensive all tokens analysis
+   * @param {string} message - User's message
+   * @param {string} requestType - Type of information request
+   * @param {Array} tokenMentions - Mentioned tokens
+   * @param {Object} marketData - Complete market data with all tokens analysis
+   * @returns {Object} AI prompt object
+   */
+  buildAllTokensAnalysisPrompt(message, requestType, tokenMentions, marketData) {
+    const currentTime = new Date().toLocaleString();
+    const hasSpecificTokens = tokenMentions.length > 0;
+    const hasAllTokensData = marketData.allTokensAnalysis && marketData.allTokensAnalysis.allTokens?.count > 0;
+    
+    const systemPrompt = `You are a senior blockchain and cryptocurrency market analyst with expertise in comprehensive token analysis and risk management. You specialize in analyzing entire token ecosystems with risk/profit scoring to provide diversified investment recommendations.
+
+EXPERTISE AREAS:
+- Comprehensive token ecosystem analysis
+- Risk-based portfolio construction
+- Profit potential assessment with risk adjustment
+- Advanced tokenomics and market dynamics
+- Cross-network token evaluation and scoring
+- Systematic risk management and diversification
+
+ANALYSIS APPROACH:
+1. Comprehensive ecosystem evaluation using ALL available tokens
+2. Risk-adjusted profit scoring for optimal recommendations
+3. Diversified portfolio recommendations across risk categories
+4. Objective analysis without bias toward any specific tokens
+5. Data-driven insights based on liquidity, volume, and fundamentals
+
+RESPONSE FORMAT (STRICT JSON - COMPREHENSIVE TOKEN ANALYSIS):
+{
+  "analysis": {
+    "marketOverview": {
+      "summary": "Comprehensive ecosystem analysis based on ALL ${marketData.allTokensAnalysis?.allTokens?.count || 0} tokens",
+      "totalMarketCap": 0.00,
+      "volume24h": 0.00,
+      "activeTokens": 0,
+      "marketChange24h": 0.00,
+      "sentiment": "bullish|bearish|neutral|mixed"
+    },
+    "riskDistribution": {
+      "lowRisk": 0,
+      "mediumRisk": 0,
+      "highRisk": 0,
+      "totalAnalyzed": 0
+    },
+    "profitOpportunities": {
+      "highScore": 0,
+      "mediumScore": 0,
+      "emergingOpportunities": 0,
+      "establishedTokens": 0
+    }
+  },
+  "recommendations": [
+    {
+      "token": "SYMBOL",
+      "name": "Token Name", 
+      "action": "BUY|WATCH|HOLD",
+      "category": "low_risk|medium_risk|high_risk",
+      "confidence": 85,
+      "targetPrice": 0.00,
+      "currentPrice": 0.00,
+      "upside": 15.5,
+      "riskScore": 25,
+      "profitScore": 75,
+      "overallScore": 45.5,
+      "timeframe": "short-term|medium-term|long-term",
+      "reasoning": "Comprehensive analysis based on risk/profit scoring",
+      "liquidity": 0.00,
+      "volume24h": 0.00,
+      "marketCap": 0.00
+    }
+  ],
+  "diversificationStrategy": {
+    "lowRiskAllocation": 40,
+    "mediumRiskAllocation": 35,
+    "highRiskAllocation": 25,
+    "reasoning": "Balanced approach based on comprehensive token analysis"
+  }
+}
+
+COMPREHENSIVE TOKEN ANALYSIS CONTEXT:
+- Analysis Time: ${currentTime}
+- Network: ${marketData.allTokensAnalysis?.network || 'sei-evm'}
+- Total Tokens Analyzed: ${marketData.allTokensAnalysis?.allTokens?.count || 0}
+- Analysis Type: ${marketData.allTokensAnalysis?.summary?.analysisType || 'comprehensive_scoring'}
+- Request Type: ${requestType}
+
+SCORING METHODOLOGY:
+- Risk Score: Liquidity depth, volume stability, volatility patterns, market cap maturity
+- Profit Score: Volume growth, price momentum, efficiency ratios, growth potential
+- Overall Score: Profit potential adjusted for risk factors
+- Diversification: Balanced allocation across risk categories
+
+ANALYSIS REQUIREMENTS:
+- Use the comprehensive token data with risk/profit scores
+- Provide diversified recommendations across ALL risk categories  
+- Include both established and emerging opportunities
+- Base all recommendations on actual scoring data
+- Avoid repetitive recommendations (NO hardcoded SEI/WETH/WBTC pattern)
+- Focus on genuine opportunities identified through scoring`;
+
+    // Build comprehensive user prompt with ALL tokens data
+    let allTokensData = '';
+    let topScoredTokensData = '';
+    
+    if (hasAllTokensData) {
+      console.log('🎯 Processing ALL tokens data for comprehensive AI analysis...');
+      const allTokensText = marketData.allTokensAnalysis.allTokens.data;
+      
+      // Extract top scored tokens from the comprehensive analysis
+      const lines = allTokensText.split('\n');
+      const topTokens = [];
+      let currentToken = null;
+      
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        
+        // Look for token entries: "1. TOKEN_SYMBOL"
+        const tokenMatch = trimmedLine.match(/^\d+\.\s+(.+)$/);
+        if (tokenMatch && !trimmedLine.includes('Pool:') && !trimmedLine.includes('Address:')) {
+          if (currentToken) {
+            topTokens.push(currentToken);
+          }
+          currentToken = {
+            symbol: tokenMatch[1],
+            data: {}
+          };
+        }
+        // Collect data for current token
+        else if (currentToken) {
+          if (trimmedLine.startsWith('Price:')) {
+            const priceMatch = trimmedLine.match(/Price:\s*\$([0-9.]+)/);
+            if (priceMatch) currentToken.data.price = parseFloat(priceMatch[1]);
+          }
+          if (trimmedLine.startsWith('Liquidity:')) {
+            const liquidityMatch = trimmedLine.match(/Liquidity:\s*\$([0-9,.]+)/);
+            if (liquidityMatch) currentToken.data.liquidity = parseFloat(liquidityMatch[1].replace(/,/g, ''));
+          }
+          if (trimmedLine.startsWith('24h Volume:')) {
+            const volumeMatch = trimmedLine.match(/24h Volume:\s*\$([0-9,.]+)/);
+            if (volumeMatch) currentToken.data.volume = parseFloat(volumeMatch[1].replace(/,/g, ''));
+          }
+          if (trimmedLine.startsWith('Risk Score:')) {
+            const riskMatch = trimmedLine.match(/Risk Score:\s*(\d+)\/100/);
+            if (riskMatch) currentToken.data.riskScore = parseInt(riskMatch[1]);
+          }
+          if (trimmedLine.startsWith('Profit Score:')) {
+            const profitMatch = trimmedLine.match(/Profit Score:\s*(\d+)\/100/);
+            if (profitMatch) currentToken.data.profitScore = parseInt(profitMatch[1]);
+          }
+          if (trimmedLine.startsWith('Overall Score:')) {
+            const overallMatch = trimmedLine.match(/Overall Score:\s*([0-9.]+)\/100/);
+            if (overallMatch) currentToken.data.overallScore = parseFloat(overallMatch[1]);
+          }
+          if (trimmedLine.startsWith('Token Type:')) {
+            const typeMatch = trimmedLine.match(/Token Type:\s*(.+)/);
+            if (typeMatch) currentToken.data.tokenType = typeMatch[1].trim();
+          }
+          if (trimmedLine.startsWith('Risk Category:')) {
+            const categoryMatch = trimmedLine.match(/Risk Category:\s*(.+)/);
+            if (categoryMatch) currentToken.data.riskCategory = categoryMatch[1].trim();
+          }
+        }
+      }
+      
+      // Add the last token
+      if (currentToken) {
+        topTokens.push(currentToken);
+      }
+      
+      console.log(`✅ Parsed ${topTokens.length} tokens with comprehensive scoring data`);
+      
+      // Filter and show tokens based on user preferences if specified
+      let filteredTokens = topTokens;
+      const riskPreference = marketData.allTokensAnalysis.riskPreference || 'balanced';
+      const tokenTypePreference = marketData.allTokensAnalysis.tokenTypePreference || [];
+      
+      // Apply risk preference filter (STRICT FILTERING)
+      if (riskPreference !== 'balanced') {
+        const beforeCount = topTokens.length;
+        filteredTokens = topTokens.filter(token => {
+          const riskScore = token.data.riskScore || 0;
+          switch (riskPreference) {
+            case 'low':
+              return riskScore <= 25; // STRICTER: Only very low risk tokens
+            case 'medium':
+              return riskScore > 25 && riskScore <= 65;
+            case 'high':
+              return riskScore > 65;
+            default:
+              return true;
+          }
+        });
+        console.log(`🎯 STRICT Risk filtering: ${beforeCount} → ${filteredTokens.length} tokens (${riskPreference} risk preference)`);
+        console.log(`🎯 Risk scores range: ${riskPreference === 'low' ? '≤25' : riskPreference === 'medium' ? '26-65' : '>65'}`);
+        
+        // Log the risk scores of filtered tokens for debugging
+        if (filteredTokens.length > 0) {
+          const riskScores = filteredTokens.map(t => t.data.riskScore || 0);
+          console.log(`🎯 Filtered token risk scores: ${riskScores.join(', ')}`);
+        }
+      }
+      
+      // Apply token type preference filter
+      if (tokenTypePreference.length > 0) {
+        filteredTokens = filteredTokens.filter(token => 
+          tokenTypePreference.includes(token.data.tokenType)
+        );
+        console.log(`🏷️ Type filtering: ${filteredTokens.length} tokens matching ${tokenTypePreference.join(', ')}`);
+      }
+      
+      // Special handling for low-risk requests (prioritize stablecoins)
+      if (riskPreference === 'low') {
+        // For low-risk requests, prioritize stablecoins and wrapped tokens
+        const stablecoins = filteredTokens.filter(token => token.data.tokenType === 'stablecoin');
+        const wrappedTokens = filteredTokens.filter(token => token.data.tokenType === 'wrapped');
+        const otherLowRisk = filteredTokens.filter(token => 
+          token.data.tokenType !== 'stablecoin' && 
+          token.data.tokenType !== 'wrapped' && 
+          (token.data.riskScore || 0) <= 25
+        );
+        
+        // Prioritize stablecoins and wrapped tokens for low-risk requests
+        filteredTokens = [...stablecoins, ...wrappedTokens, ...otherLowRisk];
+        console.log(`🏛️ Low-risk prioritization: ${stablecoins.length} stablecoins, ${wrappedTokens.length} wrapped tokens, ${otherLowRisk.length} other low-risk`);
+      } else if (!tokenTypePreference.includes('stablecoin')) {
+        // For non-low-risk requests, limit stablecoins to max 2
+        const stablecoins = filteredTokens.filter(token => token.data.tokenType === 'stablecoin');
+        const nonStablecoins = filteredTokens.filter(token => token.data.tokenType !== 'stablecoin');
+        filteredTokens = [...nonStablecoins, ...stablecoins.slice(0, 2)];
+        console.log(`🏛️ Stablecoin limiting: max 2 stablecoins included`);
+      }
+      
+      // Show top tokens with their scores for AI analysis
+      if (filteredTokens.length > 0) {
+        topScoredTokensData = `
+🌊 FILTERED TOKEN ANALYSIS (Top ${Math.min(filteredTokens.length, 15)} for ${riskPreference} risk preference):
+${filteredTokens.slice(0, 15).map((token, index) => 
+  `${index + 1}. ${token.symbol}
+   TYPE: ${token.data.tokenType || 'unknown'}
+   PRICE: $${token.data.price?.toFixed(8) || '0.00000000'}
+   LIQUIDITY: $${token.data.liquidity?.toLocaleString() || '0'}
+   VOLUME_24H: $${token.data.volume?.toLocaleString() || '0'}
+   RISK_SCORE: ${token.data.riskScore || 0}/100 (${token.data.riskCategory || 'UNKNOWN'})
+   PROFIT_SCORE: ${token.data.profitScore || 0}/100
+   OVERALL_SCORE: ${token.data.overallScore?.toFixed(1) || '0.0'}/100`
+).join('\n\n')}`;
+      }
+      
+      allTokensData = `
+📊 ECOSYSTEM SUMMARY:
+• Total Tokens Analyzed: ${marketData.allTokensAnalysis.allTokens.count}
+• Analysis Type: ${marketData.allTokensAnalysis.summary?.analysisType || 'comprehensive_scoring'}
+• Network Health: ${marketData.allTokensAnalysis.summary?.networkHealth || 'Active'}
+${topScoredTokensData}`;
+    }
+
+    const userPrompt = `Provide comprehensive investment recommendations based on ALL available tokens with risk/profit scoring:
+
+USER QUERY: "${message}"
+
+ANALYSIS PARAMETERS:
+• Network: ${marketData.allTokensAnalysis?.network || 'sei-evm'}
+• Request Type: ${requestType}
+• Focus: ${hasSpecificTokens ? tokenMentions.join(', ') : 'Diversified ecosystem recommendations'}
+• Comprehensive Data: ${hasAllTokensData ? `${marketData.allTokensAnalysis.allTokens.count} tokens with risk/profit scoring` : 'Limited data available'}
+${allTokensData}
+
+CRITICAL RISK COMPLIANCE REQUIREMENTS:
+1. **MANDATORY RISK COMPLIANCE**: User specifically wants ${marketData.allTokensAnalysis?.riskPreference || 'balanced'} risk tokens - YOU MUST ONLY RECOMMEND THESE
+2. **STRICT FILTERING APPLIED**: Only tokens matching risk preference are provided - DO NOT RECOMMEND OUTSIDE THIS FILTER
+3. **Risk Score Boundaries**: 
+   - LOW risk: ONLY Risk Score ≤25 (stablecoins, wrapped tokens) - NO EXCEPTIONS
+   - MEDIUM risk: ONLY Risk Score 26-65 (DeFi, utility tokens) - NO EXCEPTIONS  
+   - HIGH risk: ONLY Risk Score >65 (meme tokens, new tokens) - NO EXCEPTIONS
+   - BALANCED: Mix across all categories
+4. **Token Type Priority**: ${marketData.allTokensAnalysis?.tokenTypePreference?.length > 0 ? `Focus EXCLUSIVELY on: ${marketData.allTokensAnalysis.tokenTypePreference.join(', ')}` : 'All token types available but filtered by risk'}
+5. **Special Low-Risk Handling**: For LOW risk requests, prioritize stablecoins and wrapped tokens
+6. **Score-Based Selection**: Use the actual Risk Score, Profit Score, and Overall Score data
+
+MANDATORY ANALYSIS REQUIREMENTS:
+- ONLY recommend tokens from the filtered list above (already filtered by risk preference)
+- If user wants LOW risk (≤25 score): ONLY recommend stablecoins, wrapped tokens, extremely safe tokens
+- If user wants HIGH risk (>65 score): ONLY recommend meme tokens, new tokens, volatile tokens  
+- Use the actual Risk Score and Profit Score data for reasoning
+- Include liquidity analysis from real volume data
+- Calculate realistic price targets based on current prices and scores
+- FOR LOW RISK REQUESTS: Focus on capital preservation and stability over growth
+
+ABSOLUTE REQUIREMENTS FOR ${marketData.allTokensAnalysis?.riskPreference?.toUpperCase() || 'BALANCED'} RISK PREFERENCE:
+${marketData.allTokensAnalysis?.riskPreference === 'low' ? 
+  '- ONLY recommend tokens with Risk Score ≤25\n- Prioritize stablecoins (USDC, USDT) and wrapped tokens (WETH, WBTC)\n- Focus on capital preservation and stability\n- Avoid any speculative or volatile tokens' :
+marketData.allTokensAnalysis?.riskPreference === 'high' ?
+  '- ONLY recommend tokens with Risk Score >65\n- Focus on meme tokens, new tokens, high-volatility opportunities\n- Emphasize potential high returns with associated risks' :
+  '- Provide balanced portfolio across risk categories'
+}
+
+CRITICAL: The user specifically requested ${marketData.allTokensAnalysis?.riskPreference || 'balanced'} risk tokens. Do NOT include tokens outside this risk category. Provide 5-8 recommendations that strictly match the user's risk preference.`;
+
+    return {
+      system: systemPrompt,
+      user: userPrompt
+    };
+  }
+
+  /**
+   * Process information with ALL tokens analysis and risk/profit scoring
+   * @param {string} message - User message
+   * @param {Object} classification - Classification result
+   * @param {Object} allTokensAnalysis - All tokens with risk/profit scoring
+   * @param {string} network - Network being analyzed
+   * @returns {Object} Information processing result
+   */
+  async processInformationWithAllTokensAnalysis(message, classification, allTokensAnalysis, network) {
+    try {
+      console.log('🧠 Processing information request with ALL tokens analysis and scoring...');
+      console.log('📝 Original message:', message);
+      console.log('🌐 Network:', network);
+      console.log('📊 All Tokens Analysis Available:', !!allTokensAnalysis);
+      
+      // Initialize Together AI if not already done
+      if (!together && process.env.TOGETHER_API_KEY) {
+        try {
+          const Together = require('together-ai').default;
+          together = new Together({
+            apiKey: process.env.TOGETHER_API_KEY
+          });
+          console.log('🔄 TogetherAI re-initialized for comprehensive token analysis');
+        } catch (error) {
+          console.error('❌ Together AI re-initialization failed:', error.message);
+          throw new Error(`AI service initialization failed: ${error.message}`);
+        }
+      }
+
+      if (!together) {
+        console.error('❌ TogetherAI not available');
+        throw new Error('AI service not available. Please set TOGETHER_API_KEY environment variable and install together-ai package.');
+      }
+
+      // Extract token queries from message
+      const tokenMentions = this.extractTokenMentions(message);
+      const requestType = this.classifyInformationRequest(message);
+      
+      // Build comprehensive market data with ALL tokens analysis and user preferences
+      const enhancedMarketData = {
+        topTokens: [],
+        specificTokens: [],
+        tokenRecommendations: [],
+        seiStats: { totalTokens: 450, activeTokens: 95, totalPools: 65 },
+        marketCap: 0,
+        totalVolume: 0,
+        averagePrice: 0,
+        activeTokens: 0,
+        timestamp: new Date().toISOString(),
+        requestType: requestType,
+        mentionedTokens: tokenMentions.length,
+        dataSource: 'ALL_TOKENS_WITH_SCORING',
+        mcpStatus: 'connected',
+        allTokensAnalysis: {
+          ...allTokensAnalysis,
+          riskPreference: classification.riskPreference || 'balanced',
+          tokenTypePreference: classification.tokenTypePreference || []
+        }, // Include the complete token analysis with user preferences
+        network: network
+      };
+
+      console.log('🎯 Enhanced market data prepared for AI with ALL tokens analysis and scoring');
+      
+      // Prepare AI prompt for dynamic analysis with ALL tokens data
+      console.log('🧠 Building comprehensive AI prompt with ALL tokens and risk/profit scoring...');
+      const aiPrompt = this.buildAllTokensAnalysisPrompt(message, requestType, tokenMentions, enhancedMarketData);
+      
+      // Get AI-powered analysis with enhanced error handling
+      console.log('🤖 Querying TogetherAI for comprehensive token recommendations with scoring...');
+      
+      let aiAnalysis;
+      try {
+        const aiResponse = await together.chat.completions.create({
+          model: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
+          messages: [
+            {
+              role: 'system',
+              content: aiPrompt.system
+            },
+            {
+              role: 'user',
+              content: aiPrompt.user
+            }
+          ],
+          max_tokens: 4000,
+          temperature: 0.4,
+          top_p: 0.9,
+          response_format: { type: 'json_object' }
+        });
+
+        console.log('✅ TogetherAI response received with comprehensive token analysis');
+        
+        if (!aiResponse.choices || !aiResponse.choices[0] || !aiResponse.choices[0].message) {
+          throw new Error('Invalid AI response format - no choices or message');
+        }
+        
+        const responseContent = aiResponse.choices[0].message.content;
+        if (!responseContent) {
+          throw new Error('Empty AI response content');
+        }
+        
+        console.log('🔍 Parsing comprehensive AI token analysis...');
+        try {
+          aiAnalysis = JSON.parse(responseContent);
+        } catch (parseError) {
+          console.error('❌ JSON parsing failed:', parseError.message);
+          console.log('📝 Raw response:', responseContent);
+          
+          // Attempt to extract JSON from response if it's wrapped in text
+          const jsonMatch = responseContent.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            aiAnalysis = JSON.parse(jsonMatch[0]);
+          } else {
+            throw new Error(`Failed to parse AI response as JSON: ${parseError.message}`);
+          }
+        }
+        
+        // Validate response structure and provide defaults if needed
+        aiAnalysis = this.validateAndEnhanceAIResponse(aiAnalysis, enhancedMarketData, requestType, tokenMentions);
+        
+      } catch (aiError) {
+        console.error('❌ Comprehensive TogetherAI API call failed:', aiError.message);
+        
+        // Provide intelligent fallback analysis based on available data
+        aiAnalysis = this.generateFallbackAnalysis(message, requestType, tokenMentions, enhancedMarketData, aiError);
+      }
+
       return {
-        type: 'strategy',
+        type: 'information',
         result: {
-          response: 'I apologize, but I encountered an error while processing your strategy request. Please try again.',
-          strategyType: 'error'
+          requestType,
+          analysis: aiAnalysis.analysis,
+          recommendations: aiAnalysis.recommendations,
+          marketContext: {
+            dataSource: 'all_tokens_with_comprehensive_scoring',
+            lastUpdated: enhancedMarketData.timestamp,
+            tokensAnalyzed: allTokensAnalysis.allTokens?.count || 'comprehensive_analysis',
+            aiModel: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo'
+          },
+          actionableInsights: aiAnalysis.actionableInsights || [],
+          riskWarnings: aiAnalysis.riskWarnings || [],
+          nextSteps: aiAnalysis.nextSteps || [],
+          allTokensAnalysis: allTokensAnalysis,
+          networkAnalyzed: network,
+          enhancedFeatures: {
+            comprehensiveTokenAnalysis: true,
+            riskProfitScoring: true,
+            diversifiedRecommendations: true
+          }
         },
-        status: 'error'
+        status: 'completed',
+        processingMethod: 'ai_powered_comprehensive_token_analysis',
+        confidence: aiAnalysis.confidence || 'high'
+      };
+      
+    } catch (error) {
+      console.error('Comprehensive token analysis processing error:', error);
+      
+      return {
+        type: 'information',
+        result: {
+          error: 'Comprehensive AI token analysis temporarily unavailable',
+          fallback: 'Unable to process your comprehensive token analysis request at the moment. Please try again in a few moments.',
+          suggestion: 'You can ask about specific cryptocurrencies, risk analysis, or comprehensive market insights.',
+          allTokensAnalysis: allTokensAnalysis,
+          networkAnalyzed: network,
+          enhancedFeatures: {
+            comprehensiveTokenAnalysis: true,
+            riskProfitScoring: true,
+            diversifiedRecommendations: true
+          }
+        },
+        status: 'error',
+        processingMethod: 'comprehensive_token_analysis_fallback'
+      };
+    }
+  }
+
+  /**
+   * Process information with market intelligence integration (DEPRECATED)
+   * @param {string} message - User message
+   * @param {Object} classification - Classification result
+   * @param {Object} marketIntelligence - Enhanced market intelligence
+   * @param {string} network - Network being analyzed
+   * @returns {Object} Information processing result
+   */
+  async processInformationWithMarketIntelligence(message, classification, marketIntelligence, network) {
+    try {
+      console.log('🧠 Processing information request with integrated market intelligence...');
+      console.log('📝 Original message:', message);
+      console.log('🌐 Network:', network);
+      console.log('📊 Market Intelligence Available:', !!marketIntelligence);
+      
+      // Initialize Together AI if not already done
+      if (!together && process.env.TOGETHER_API_KEY) {
+        try {
+          const Together = require('together-ai').default;
+          together = new Together({
+            apiKey: process.env.TOGETHER_API_KEY
+          });
+          console.log('🔄 TogetherAI re-initialized for enhanced processing');
+        } catch (error) {
+          console.error('❌ Together AI re-initialization failed:', error.message);
+          throw new Error(`AI service initialization failed: ${error.message}`);
+        }
+      }
+
+      if (!together) {
+        console.error('❌ TogetherAI not available');
+        throw new Error('AI service not available. Please set TOGETHER_API_KEY environment variable and install together-ai package.');
+      }
+
+      // Extract token queries from message
+      const tokenMentions = this.extractTokenMentions(message);
+      const requestType = this.classifyInformationRequest(message);
+      
+      // Build comprehensive market data with intelligence
+      const enhancedMarketData = {
+        topTokens: [],
+        specificTokens: [],
+        tokenRecommendations: [],
+        seiStats: { totalTokens: 450, activeTokens: 95, totalPools: 65 },
+        marketCap: 0,
+        totalVolume: 0,
+        averagePrice: 0,
+        activeTokens: 0,
+        timestamp: new Date().toISOString(),
+        requestType: requestType,
+        mentionedTokens: tokenMentions.length,
+        dataSource: 'ENHANCED_MCP_INTELLIGENCE',
+        mcpStatus: 'connected',
+        marketIntelligence: marketIntelligence, // Include the intelligence directly
+        network: network
+      };
+
+      console.log('🎯 Enhanced market data prepared for AI with market intelligence');
+      
+      // Prepare AI prompt for dynamic analysis with enhanced market intelligence
+      console.log('🧠 Building enhanced AI prompt with comprehensive market intelligence...');
+      const aiPrompt = this.buildInformationPrompt(message, requestType, tokenMentions, enhancedMarketData);
+      
+      // Get AI-powered analysis with enhanced error handling
+      console.log('🤖 Querying TogetherAI for comprehensive market insights with intelligence data...');
+      
+      let aiAnalysis;
+      try {
+        const aiResponse = await together.chat.completions.create({
+          model: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
+          messages: [
+            {
+              role: 'system',
+              content: aiPrompt.system
+            },
+            {
+              role: 'user',
+              content: aiPrompt.user
+            }
+          ],
+          max_tokens: 4000,
+          temperature: 0.4,
+          top_p: 0.9,
+          response_format: { type: 'json_object' }
+        });
+
+        console.log('✅ TogetherAI response received with enhanced data');
+        
+        if (!aiResponse.choices || !aiResponse.choices[0] || !aiResponse.choices[0].message) {
+          throw new Error('Invalid AI response format - no choices or message');
+        }
+        
+        const responseContent = aiResponse.choices[0].message.content;
+        if (!responseContent) {
+          throw new Error('Empty AI response content');
+        }
+        
+        console.log('🔍 Parsing enhanced AI response...');
+        try {
+          aiAnalysis = JSON.parse(responseContent);
+        } catch (parseError) {
+          console.error('❌ JSON parsing failed:', parseError.message);
+          console.log('📝 Raw response:', responseContent);
+          
+          // Attempt to extract JSON from response if it's wrapped in text
+          const jsonMatch = responseContent.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            aiAnalysis = JSON.parse(jsonMatch[0]);
+          } else {
+            throw new Error(`Failed to parse AI response as JSON: ${parseError.message}`);
+          }
+        }
+        
+        // Validate response structure and provide defaults if needed
+        aiAnalysis = this.validateAndEnhanceAIResponse(aiAnalysis, enhancedMarketData, requestType, tokenMentions);
+        
+      } catch (aiError) {
+        console.error('❌ Enhanced TogetherAI API call failed:', aiError.message);
+        
+        // Provide intelligent fallback analysis based on available data
+        aiAnalysis = this.generateFallbackAnalysis(message, requestType, tokenMentions, enhancedMarketData, aiError);
+      }
+
+      return {
+        type: 'information',
+        result: {
+          requestType,
+          analysis: aiAnalysis.analysis,
+          recommendations: aiAnalysis.recommendations,
+          marketContext: {
+            dataSource: 'enhanced_mcp_intelligence',
+            lastUpdated: enhancedMarketData.timestamp,
+            tokensAnalyzed: tokenMentions.length || 'comprehensive_analysis',
+            aiModel: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo'
+          },
+          actionableInsights: aiAnalysis.actionableInsights || [],
+          riskWarnings: aiAnalysis.riskWarnings || [],
+          nextSteps: aiAnalysis.nextSteps || [],
+          marketIntelligence: marketIntelligence,
+          networkAnalyzed: network,
+          enhancedFeatures: {
+            newPoolsDetection: true,
+            newTokensDiscovery: true,
+            trendingAnalysis: true
+          }
+        },
+        status: 'completed',
+        processingMethod: 'ai_powered_enhanced_market_analysis',
+        confidence: aiAnalysis.confidence || 'high'
+      };
+      
+    } catch (error) {
+      console.error('Enhanced Information processing error:', error);
+      
+      return {
+        type: 'information',
+        result: {
+          error: 'Enhanced AI market analysis temporarily unavailable',
+          fallback: 'Unable to process your market inquiry with enhanced intelligence at the moment. Please try again in a few moments.',
+          suggestion: 'You can ask about specific cryptocurrencies, market trends, price analysis, or general market insights.',
+          marketIntelligence: marketIntelligence,
+          networkAnalyzed: network,
+          enhancedFeatures: {
+            newPoolsDetection: true,
+            newTokensDiscovery: true,
+            trendingAnalysis: true
+          }
+        },
+        status: 'error',
+        processingMethod: 'enhanced_ai_fallback'
       };
     }
   }

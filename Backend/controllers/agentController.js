@@ -4,7 +4,7 @@ const Memory = require('../models/Memory');
 const Strategy = require('../models/Strategy');
 const WalletService = require('../services/walletService');
 const SeiMarketDataService = require('../services/seiMarketDataService');
-const agentHederaUtils = require('../utils/agentHederaUtils');
+const seiAgentService = require('../services/seiAgentService');
 const axios = require('axios');
 const Together = require('together-ai').default;
 const { v4: uuidv4 } = require('uuid');
@@ -88,13 +88,13 @@ const createAgent = async (req, res) => {
  */
 const getAgentTypeConfiguration = (agentType, name, primaryStrategy, userConfig) => {
   const baseConfig = {
-    customPrompt: `I am ${name}, an AI agent specialized in blockchain operations on the Hedera network.`
+    customPrompt: `I am ${name}, an AI agent specialized in blockchain operations on the SEI network.`
   };
 
   switch (agentType) {
     case 'strategy':
       return {
-        description: `AI trading agent specialized in ${primaryStrategy} strategy operations on Hedera network`,
+        description: `AI trading agent specialized in ${primaryStrategy} strategy operations on SEI network`,
         avatarName: `${name.split(' ')[0]} Trader`,
         role: 'Trading Strategy Agent',
         configuration: {
@@ -105,13 +105,13 @@ const getAgentTypeConfiguration = (agentType, name, primaryStrategy, userConfig)
           stopLoss: 5,
           takeProfit: 10,
           maxOpenPositions: 3,
-          customPrompt: `I am ${name}, a specialized trading agent focused on ${primaryStrategy} strategy. I help users execute and manage their trading strategies on the Hedera network with proper risk management.`
+          customPrompt: `I am ${name}, a specialized trading agent focused on ${primaryStrategy} strategy. I help users execute and manage their trading strategies on the SEI network with proper risk management.`
         }
       };
 
     case 'actions':
       return {
-        description: `AI agent specialized in executing blockchain actions and transactions on Hedera network`,
+        description: `AI agent specialized in executing blockchain actions and transactions on SEI network`,
         avatarName: `${name.split(' ')[0]} Executor`,
         role: 'Action Execution Agent',
         configuration: {
@@ -120,7 +120,7 @@ const getAgentTypeConfiguration = (agentType, name, primaryStrategy, userConfig)
           executionMode: 'guided', // 'guided' or 'autonomous'
           confirmationRequired: true,
           maxTransactionValue: 1000, // HBAR
-          customPrompt: `I am ${name}, a specialized action execution agent. I help users safely execute blockchain transactions including transfers, swaps, staking, and other DeFi operations on the Hedera network. I always prioritize security and provide clear guidance.`
+          customPrompt: `I am ${name}, a specialized action execution agent. I help users safely execute blockchain transactions including transfers, swaps, staking, and other DeFi operations on the SEI network. I always prioritize security and provide clear guidance.`
         }
       };
 
@@ -134,7 +134,7 @@ const getAgentTypeConfiguration = (agentType, name, primaryStrategy, userConfig)
           informationTypes: ['market_data', 'token_analysis', 'defi_protocols', 'network_stats'],
           updateFrequency: 'real_time',
           dataSource: 'multiple',
-          customPrompt: `I am ${name}, an information and analysis agent. I provide up-to-date market data, token analysis, DeFi protocol information, and network statistics for the Hedera ecosystem. I help users make informed decisions with accurate, timely data.`
+          customPrompt: `I am ${name}, an information and analysis agent. I provide up-to-date market data, token analysis, DeFi protocol information, and network statistics for the SEI ecosystem. I help users make informed decisions with accurate, timely data.`
         }
       };
 
@@ -147,21 +147,21 @@ const getAgentTypeConfiguration = (agentType, name, primaryStrategy, userConfig)
           ...baseConfig,
           feedbackTypes: ['performance_analysis', 'strategy_recommendations', 'risk_assessment', 'portfolio_review'],
           analysisDepth: 'comprehensive',
-          customPrompt: `I am ${name}, a feedback and advisory agent. I analyze user actions, strategies, and portfolio performance to provide constructive feedback and actionable recommendations for improving results on the Hedera network.`
+          customPrompt: `I am ${name}, a feedback and advisory agent. I analyze user actions, strategies, and portfolio performance to provide constructive feedback and actionable recommendations for improving results on the SEI network.`
         }
       };
 
     case 'general':
     default:
       return {
-        description: `AI agent for general blockchain operations and assistance on Hedera network`,
+        description: `AI agent for general blockchain operations and assistance on SEI network`,
         avatarName: `${name.split(' ')[0]} Assistant`,
         role: 'General Purpose Agent',
         configuration: {
           ...baseConfig,
           capabilities: ['basic_actions', 'information_lookup', 'guidance', 'education'],
           interactionMode: 'conversational',
-          customPrompt: `I am ${name}, a general-purpose AI agent for the Hedera blockchain. I can help with various blockchain operations, provide information, and assist with understanding the Hedera ecosystem.`
+          customPrompt: `I am ${name}, a general-purpose AI agent for the SEI blockchain. I can help with various blockchain operations, provide information, and assist with understanding the SEI ecosystem.`
         }
       };
   }
@@ -243,7 +243,7 @@ const createSimpleAgent = async (req, res) => {
       agentType: 'general',
       primaryStrategy: null,
       configuration: {
-        hederaEnabled: true,
+        seiEnabled: true,
         customPrompt: `I am ${name}, a simple AI agent for blockchain operations.`
       },
       avatarName: `${name} Bot`,
@@ -259,37 +259,11 @@ const createSimpleAgent = async (req, res) => {
     
     console.log(`✅ Simple agent created: ${savedAgent._id}`);
 
-    // Step 2: Create Hedera wallet
-    console.log('🔑 Creating Hedera wallet...');
+    // Step 2: Agent is ready for use (no wallet creation needed for simple agents)
+    console.log('✅ Simple agent ready for use');
     
-    const hederaCredentialOptions = {
-      useOperatorCredentials: false,
-      createNewAccount: true,
-      initialBalance: initialBalance,
-      encryptPrivateKey: true,
-      strictMode: false
-    };
-
-    let hederaResult;
-    try {
-      hederaResult = await agentHederaUtils.assignHederaCredentials(
-        savedAgent._id, 
-        hederaCredentialOptions
-      );
-      console.log('✅ Hedera wallet created successfully');
-    } catch (hederaError) {
-      console.error('❌ Failed to create Hedera wallet:', hederaError);
-      
-      // Graceful fallback - keep agent without Hedera credentials
-      hederaResult = {
-        success: false,
-        error: hederaError.message,
-        gracefulFallback: true
-      };
-    }
-
     // Step 3: Get the final agent
-    const finalAgent = await Agent.findById(savedAgent._id).select('-hederaPrivateKey');
+    const finalAgent = await Agent.findById(savedAgent._id);
     
     const endTime = Date.now();
     const duration = endTime - startTime;
@@ -309,8 +283,7 @@ const createSimpleAgent = async (req, res) => {
           userId: finalAgent.userId,
           agentType: finalAgent.agentType,
           role: finalAgent.role,
-          hederaAccountId: finalAgent.hederaAccountId,
-          hederaPublicKey: finalAgent.hederaPublicKey,
+          seiAddress: finalAgent.seiAddress,
           isActive: finalAgent.isActive,
           createdAt: finalAgent.createdAt
         },
@@ -322,23 +295,12 @@ const createSimpleAgent = async (req, res) => {
           isActive: userInfo.isActive,
           createdAt: userInfo.createdAt
         },
-        wallet: {
-          enabled: hederaResult.success || false,
-          accountId: hederaResult.hedera?.accountId || null,
-          publicKey: hederaResult.hedera?.publicKey || null,
-          network: 'testnet',
-          initialBalance: hederaResult.hedera?.initialBalance || null,
-          transactionId: hederaResult.hedera?.transactionId || null,
-          error: hederaResult.error || null
-        },
         metadata: {
           creationTime: `${duration}ms`,
           timestamp: new Date().toISOString()
         }
       },
-      message: hederaResult.success 
-        ? 'Simple agent with Hedera wallet created successfully' 
-        : 'Simple agent created, but wallet creation failed'
+      message: 'Simple agent created successfully'
     });
 
   } catch (error) {
@@ -352,211 +314,7 @@ const createSimpleAgent = async (req, res) => {
   }
 };
 
-// @desc    Create a new agent with dedicated Hedera wallet (full configuration)
-// @route   POST /api/agents/hedera
-// @access  Public (should be protected in production)
-const createAgentWithHedera = async (req, res) => {
-  const startTime = Date.now();
-  
-  try {
-    const {
-      name,
-      description,
-      userId,
-      agentType = 'general',
-      primaryStrategy = 'custom',
-      configuration = {},
-      hederaOptions = {}
-    } = req.body;
-
-    console.log(`🚀 Creating Hedera agent: ${name} (${agentType}) for user: ${userId}`);
-
-    // Validate userId is provided
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: 'userId is required'
-      });
-    }
-
-    // Verify user exists - handle both ObjectId and email
-    const User = require('../models/User');
-    let existingUser;
-    console.log('🔧 User ID:', userId.includes('@'));
-    // Check if userId is an email (contains @) or ObjectId
-    if (userId.includes('@')) {
-      // Find user by email
-      existingUser = await User.findOne({ email: userId });
-    } else {
-      // Find user by ObjectId
-      try {
-        existingUser = await User.findById(userId);
-      } catch (error) {
-        // If ObjectId is invalid, try finding by email as fallback
-        existingUser = await User.findOne({ email: userId });
-      }
-    }
-    
-    if (!existingUser) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found. Please create user first.'
-      });
-    }
-    
-    // Use the actual user ObjectId for further operations
-    const actualUserId = existingUser._id;
-
-    // Check if agent name already exists for this user
-    const existingAgent = await Agent.findOne({ name, userId:actualUserId, isActive: true });
-    if (existingAgent) {
-      return res.status(400).json({
-        success: false,
-        message: 'Agent with this name already exists for this user'
-      });
-    }
-
-    // Generate type-specific defaults
-    const agentTypeConfig = getAgentTypeConfiguration(agentType, name, primaryStrategy, configuration);
-
-    // Step 1: Create the agent with basic information
-    const agentData = {
-      name,
-      description: description || agentTypeConfig.description,
-      userId: actualUserId,
-      agentUuid: uuidv4(),
-      agentType,
-      primaryStrategy: agentType === 'strategy' ? primaryStrategy : null,
-      configuration: {
-        ...agentTypeConfig.configuration,
-        ...configuration, // Allow overrides
-        hederaEnabled: true, // Mark as Hedera-enabled
-      },
-      avatarName: configuration?.avatarName || agentTypeConfig.avatarName,
-      role: configuration?.role || agentTypeConfig.role,
-      isActive: true,
-      lastInteraction: new Date(),
-      createdAt: new Date()
-    };
-
-    console.log('📝 Creating agent document...');
-    const agent = new Agent(agentData);
-    const savedAgent = await agent.save();
-    
-    console.log(`✅ Agent created: ${savedAgent._id}`);
-
-    // Step 2: Create Hedera wallet and assign credentials
-    console.log('🔑 Creating Hedera wallet...');
-    
-    const hederaCredentialOptions = {
-      useOperatorCredentials: hederaOptions.useOperatorCredentials || false,
-      createNewAccount: hederaOptions.createNewAccount !== false, // Default to true
-      initialBalance: hederaOptions.initialBalance || 10, // Default 10 HBAR
-      encryptPrivateKey: hederaOptions.encryptPrivateKey !== false, // Default to true
-      ...hederaOptions
-    };
-
-    let hederaResult;
-    try {
-      hederaResult = await agentHederaUtils.assignHederaCredentials(
-        savedAgent._id, 
-        hederaCredentialOptions
-      );
-      console.log('✅ Hedera credentials assigned successfully');
-    } catch (hederaError) {
-      console.error('❌ Failed to create Hedera wallet:', hederaError);
-      
-      // If Hedera wallet creation fails, we can either:
-      // 1. Delete the agent (strict mode)
-      // 2. Keep the agent without Hedera credentials (graceful mode)
-      
-      if (hederaOptions.strictMode) {
-        await Agent.findByIdAndDelete(savedAgent._id);
-        return res.status(500).json({
-          success: false,
-          message: 'Failed to create Hedera wallet for agent',
-          error: hederaError.message,
-          agentDeleted: true
-        });
-      }
-      
-      // Graceful mode: keep agent without Hedera credentials
-      hederaResult = {
-        success: false,
-        error: hederaError.message,
-        gracefulFallback: true
-      };
-    }
-
-    // Step 3: Get the updated agent with Hedera credentials
-    const finalAgent = await Agent.findById(savedAgent._id).select('-hederaPrivateKey');
-    
-    // Step 4: Get user information for response
-    let userData = null;
-    let authToken = null;
-    try {
-      // Use the existing user we already found and validated
-      const foundUser = existingUser;
-      if (foundUser) {
-        userData = foundUser;
-        // Generate JWT token
-        const jwt = require('jsonwebtoken');
-        const JWT_SECRET = process.env.JWT_SECRET || 'mariposa-secret-key';
-        authToken = jwt.sign(
-          { 
-            userId: foundUser._id, 
-            email: foundUser.email,
-            userType: foundUser.userType 
-          },
-          JWT_SECRET,
-          { expiresIn: '24h' }
-        );
-      }
-    } catch (userError) {
-      console.error('❌ Error fetching user for response:', userError);
-    }
-    
-    const endTime = Date.now();
-    const duration = endTime - startTime;
-
-    console.log(`🎉 Hedera agent creation completed in ${duration}ms`);
-
-    res.status(201).json({
-      success: true,
-      data: {
-        agent: finalAgent,
-        user: userData,
-        token: authToken,
-        hedera: {
-          enabled: hederaResult.success || false,
-          accountId: hederaResult.hedera?.accountId || null,
-          publicKey: hederaResult.hedera?.publicKey || null,
-          network: hederaResult.hedera?.network || 'testnet',
-          initialBalance: hederaResult.hedera?.initialBalance || null,
-          transactionId: hederaResult.hedera?.transactionId || null,
-          error: hederaResult.error || null
-        },
-        metadata: {
-          creationTime: `${duration}ms`,
-          timestamp: new Date().toISOString(),
-          hederaOptions: hederaCredentialOptions
-        }
-      },
-      message: hederaResult.success 
-        ? 'Agent with Hedera wallet created successfully' 
-        : 'Agent created, but Hedera wallet creation failed'
-    });
-
-  } catch (error) {
-    console.error('💥 Create Hedera Agent Error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create agent with Hedera wallet',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
-};
+// Hedera functionality has been removed in favor of SEI network integration
 
 // @desc    Get all agents for a user
 // @route   GET /api/agents/user/:userId
@@ -3172,7 +2930,6 @@ const findAgentByIdOrUuid = async (identifier) => {
 module.exports = {
   createAgent,
   createSimpleAgent,
-  createAgentWithHedera,
   getUserAgents,
   getAgentById,
   updateAgent,

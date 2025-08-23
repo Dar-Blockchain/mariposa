@@ -4,9 +4,10 @@ const {
   generateStrategy,
   modifyAgentStrategy,
   approveAgent,
-  createSimpleAgent,
-  createAgentWithHedera
+  createSimpleAgent
 } = require('../controllers/agentController');
+
+const { createSeiAgent } = require('../controllers/seiAgentController');
 
 const router = express.Router();
 
@@ -51,6 +52,22 @@ const router = express.Router();
  *         portfolioAllocation:
  *           type: object
  *           description: Token allocation with percentages and reasoning
+ *           properties:
+ *             tokens:
+ *               type: array
+ *               description: Array of token allocations
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   symbol:
+ *                     type: string
+ *                     description: Token symbol
+ *                   percentage:
+ *                     type: number
+ *                     description: Allocation percentage
+ *                   reasoning:
+ *                     type: string
+ *                     description: Reasoning for allocation
  *         maxPositionSize:
  *           type: number
  *           description: Maximum position size in USD
@@ -66,6 +83,16 @@ const router = express.Router();
  *         portfolioManagementPlan:
  *           type: object
  *           description: Comprehensive portfolio management plan
+ *           properties:
+ *             allocation:
+ *               type: object
+ *               description: Portfolio allocation strategy
+ *             rebalancing:
+ *               type: string
+ *               description: Rebalancing frequency
+ *             riskParameters:
+ *               type: object
+ *               description: Risk management parameters
  *         marketInsights:
  *           type: string
  *           description: Current market analysis
@@ -406,11 +433,11 @@ router.post('/simple', [
 
 /**
  * @swagger
- * /api/agents/hedera:
+ * /api/agents/sei:
  *   post:
- *     summary: Create a new specialized agent with dedicated Hedera wallet
+ *     summary: Create a new specialized agent with SEI wallet
  *     description: |
- *       Creates a new AI agent with a dedicated Hedera testnet wallet and specialized configuration based on agent type:
+ *       Creates a new AI agent with a dedicated SEI EVM wallet and specialized configuration based on agent type:
  *       
  *       **🤖 Agent Types:**
  *       - **Strategy**: Trading and investment strategy agents (DCA, momentum, etc.)
@@ -790,7 +817,7 @@ router.post('/simple', [
  *                   description: True if agent was deleted due to wallet creation failure in strict mode
  *                   example: true
  */
-router.post('/hedera', [
+router.post('/sei', [
   body('name')
     .notEmpty()
     .withMessage('Agent name is required')
@@ -805,12 +832,12 @@ router.post('/hedera', [
     .withMessage('Description cannot exceed 500 characters'),
   body('agentType')
     .optional()
-    .isIn(['strategy', 'actions', 'information', 'feedback', 'general'])
-    .withMessage('Agent type must be one of: strategy, actions, information, feedback, general'),
-  body('primaryStrategy')
+    .isIn(['general', 'trading', 'defi', 'nft'])
+    .withMessage('Agent type must be one of: general, trading, defi, nft'),
+  body('configuration')
     .optional()
-    .isIn(['DCA', 'momentum_trading', 'swing_trading', 'hodl', 'arbitrage', 'scalping', 'memecoin', 'yield_farming', 'spot_trading', 'futures_trading', 'custom'])
-    .withMessage('Invalid primary strategy'),
+    .isObject()
+    .withMessage('Configuration must be an object'),
   body('configuration.defaultBudget')
     .optional()
     .isNumeric()
@@ -818,28 +845,8 @@ router.post('/hedera', [
   body('configuration.riskTolerance')
     .optional()
     .isIn(['conservative', 'moderate', 'aggressive'])
-    .withMessage('Risk tolerance must be conservative, moderate, or aggressive'),
-  body('hederaOptions.initialBalance')
-    .optional()
-    .isNumeric()
-    .withMessage('Initial balance must be a number'),
-  body('hederaOptions.useOperatorCredentials')
-    .optional()
-    .isBoolean()
-    .withMessage('useOperatorCredentials must be a boolean'),
-  body('hederaOptions.createNewAccount')
-    .optional()
-    .isBoolean()
-    .withMessage('createNewAccount must be a boolean'),
-  body('hederaOptions.encryptPrivateKey')
-    .optional()
-    .isBoolean()
-    .withMessage('encryptPrivateKey must be a boolean'),
-  body('hederaOptions.strictMode')
-    .optional()
-    .isBoolean()
-    .withMessage('strictMode must be a boolean')
-], createAgentWithHedera);
+    .withMessage('Risk tolerance must be conservative, moderate, or aggressive')
+], createSeiAgent);
 
 router.post('/generate-strategy', [
   body('message')

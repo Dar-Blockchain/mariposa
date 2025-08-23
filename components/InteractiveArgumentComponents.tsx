@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { CheckCircle, AlertCircle, User, Coins } from 'lucide-react';
+import { CheckCircle, AlertCircle, User, Coins, Send, ArrowRight } from 'lucide-react';
 
 interface InteractiveComponentData {
   type: 'input' | 'textarea' | 'combobox';
@@ -45,6 +45,9 @@ export function InteractiveArgumentComponents({
   onSubmit,
   onCancel
 }: InteractiveArgumentComponentsProps) {
+  
+  // Check if this is a transfer action for specialized styling
+  const isTransferAction = interactiveData.missingArgs.includes('recipient');
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -80,9 +83,7 @@ export function InteractiveArgumentComponents({
       
       case 'address':
         if (!value.trim()) return 'Address is required';
-        if (!/^0\.0\.\d+$/.test(value) && !/^[a-zA-Z\s]+$/.test(value)) {
-          return 'Enter a valid address (0.0.xxxxx) or contact name';
-        }
+        // Allow any non-empty input - backend will handle detailed validation
         return '';
       
       case 'token_id':
@@ -227,8 +228,12 @@ export function InteractiveArgumentComponents({
     <Card className="w-full max-w-md mx-auto">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <AlertCircle className="h-5 w-5 text-blue-500" />
-          Additional Information Required
+          {isTransferAction ? (
+            <Send className="h-5 w-5 text-green-500" />
+          ) : (
+            <AlertCircle className="h-5 w-5 text-blue-500" />
+          )}
+          {isTransferAction ? 'Complete Transfer' : 'Additional Information Required'}
         </CardTitle>
         <CardDescription>{interactiveData.message}</CardDescription>
       </CardHeader>
@@ -249,17 +254,26 @@ export function InteractiveArgumentComponents({
           <Button
             onClick={handleSubmit}
             disabled={!allFieldsFilled || isSubmitting}
-            className="flex-1"
+            className={`flex-1 ${isTransferAction ? 'bg-green-600 hover:bg-green-700' : ''}`}
           >
             {isSubmitting ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                Processing...
+                {isTransferAction ? 'Processing Transfer...' : 'Processing...'}
               </>
             ) : (
               <>
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Continue
+                {isTransferAction ? (
+                  <>
+                    <Send className="h-4 w-4 mr-2" />
+                    Continue Transfer
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Continue
+                  </>
+                )}
               </>
             )}
           </Button>

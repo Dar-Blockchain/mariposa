@@ -58,75 +58,79 @@ router.get('/supported-actions', (req, res) => {
     const supportedActions = {
       transfer: {
         name: 'Transfer Tokens',
-        description: 'Send HBAR or tokens to another account',
+        description: 'Send SEI or tokens to another account on SEI Network',
         requiredArgs: ['recipient', 'amount'],
-        optionalArgs: ['tokenId'],
+        optionalArgs: ['tokenAddress'],
         examples: [
-          'Send 100 HBAR to Samir',
+          'Send 100 SEI to 0x1234...5678',
           'Transfer 50 USDC to Alice',
-          'Send 1000 SAUCE to 0.0.1234'
+          'Send 1000 DRAGONX to sei1abc...xyz'
         ]
       },
       swap: {
         name: 'Swap Tokens',
-        description: 'Exchange one token for another using SaucerSwap',
+        description: 'Exchange one token for another using DragonSwap or SeiSwap',
         requiredArgs: ['fromToken', 'toToken', 'amount'],
-        optionalArgs: ['swapType', 'slippage'],
+        optionalArgs: ['swapType', 'slippage', 'dex'],
         examples: [
-          'Swap 100 HBAR for USDC',
-          'Exchange my SAUCE for USDT',
-          'Convert 1000 USDC to HBAR'
+          'Swap 100 SEI for USDC on DragonSwap',
+          'Exchange my WBTC for USDT on SeiSwap',
+          'Convert 1000 USDC to SEI with 1% slippage'
         ]
       },
       createAgent: {
         name: 'Create AI Agent',
-        description: 'Create a new AI trading agent',
+        description: 'Create a new AI trading agent for SEI ecosystem',
         requiredArgs: ['name', 'description'],
         optionalArgs: ['strategy', 'parameters'],
         examples: [
-          'Create a DCA trading agent',
-          'Make an agent called "Arbitrage Bot"',
-          'Create agent for portfolio rebalancing'
+          'Create a DCA agent for SEI tokens',
+          'Make an agent called "SEI Arbitrage Bot"',
+          'Create agent for DragonSwap liquidity management'
         ]
       },
       stake: {
-        name: 'Stake Tokens',
-        description: 'Stake tokens for rewards',
+        name: 'Stake SEI',
+        description: 'Stake SEI tokens for rewards with validators',
         requiredArgs: ['amount'],
-        optionalArgs: ['tokenId', 'validator'],
+        optionalArgs: ['validator'],
         examples: [
-          'Stake 1000 HBAR',
-          'Delegate to validator 0.0.800'
+          'Stake 1000 SEI',
+          'Delegate to validator seivalidator1...',
+          'Stake SEI with highest APY validator'
         ]
       },
-      associateToken: {
-        name: 'Associate Token',
-        description: 'Associate a token with your account',
-        requiredArgs: ['tokenId'],
-        optionalArgs: [],
+      addLiquidity: {
+        name: 'Add Liquidity',
+        description: 'Add liquidity to SEI DEX pools',
+        requiredArgs: ['tokenA', 'tokenB', 'amountA'],
+        optionalArgs: ['amountB', 'slippage', 'dex'],
         examples: [
-          'Associate token 0.0.123456',
-          'Associate USDC token'
+          'Add liquidity to SEI/USDC pool',
+          'Provide liquidity for WBTC/ETH on DragonSwap',
+          'Add 100 SEI and equivalent USDT to pool'
         ]
       },
-      createTopic: {
-        name: 'Create Topic',
-        description: 'Create a new topic for messaging',
-        requiredArgs: ['memo'],
-        optionalArgs: ['submitKey'],
+      removeLiquidity: {
+        name: 'Remove Liquidity',
+        description: 'Remove liquidity from SEI DEX pools',
+        requiredArgs: ['poolAddress', 'percentage'],
+        optionalArgs: ['minAmountA', 'minAmountB'],
         examples: [
-          'Create topic for price alerts',
-          'Make new topic "trading signals"'
+          'Remove 50% liquidity from SEI/USDC pool',
+          'Withdraw all liquidity from WBTC/ETH pool',
+          'Remove liquidity from pool 0x123...abc'
         ]
       },
-      sendMessage: {
-        name: 'Send Message',
-        description: 'Send a message to a topic',
-        requiredArgs: ['topicId', 'message'],
-        optionalArgs: [],
+      bridge: {
+        name: 'Bridge Assets',
+        description: 'Bridge tokens between SEI and other networks',
+        requiredArgs: ['amount', 'tokenAddress', 'destinationChain'],
+        optionalArgs: ['destinationAddress'],
         examples: [
-          'Send "hello" to topic 0.0.456',
-          'Publish update to topic'
+          'Bridge 100 USDC from SEI to Ethereum',
+          'Transfer WBTC from Arbitrum to SEI',
+          'Bridge SEI to Polygon network'
         ]
       }
     };
@@ -157,11 +161,11 @@ router.get('/health', (req, res) => {
       service: 'Enhanced Intent Service',
       version: '1.0.0',
       features: [
-        'Intent classification',
-        'Argument validation',
-        'Contact resolution',
-        'Token lookup',
-        'Interactive components'
+        'SEI ecosystem intent classification',
+        'Argument validation for SEI transactions',
+        'Contact resolution on SEI network',
+        'SEI token lookup and validation',
+        'Interactive components for DeFi operations'
       ],
       timestamp: new Date().toISOString()
     });

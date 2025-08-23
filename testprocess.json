@@ -1,0 +1,106 @@
+{
+    "success": true,
+    "type": "information",
+    "data": {
+        "intent": {
+            "classification": {
+                "type": "information",
+                "confidence": 0.9,
+                "reasoning": "The user is asking for a recommendation, which is typically a request for information or data. The mention of 'sei-evm network' suggests the user is interested in a specific blockchain or network, but the primary intent is to gather information."
+            },
+            "extraction": {
+                "args": {}
+            },
+            "validation": {
+                "isValid": true,
+                "missing": [],
+                "resolved": {},
+                "requiredArgs": []
+            },
+            "interactiveData": null,
+            "timestamp": "2025-08-21T14:55:36.767Z",
+            "userId": "68a65868e48adfaf201064c6"
+        },
+        "information": {
+            "type": "information",
+            "result": {
+                "requestType": "token_specific",
+                "analysis": {
+                    "marketOverview": {
+                        "summary": "The broader crypto market is experiencing a mixed sentiment, with some tokens showing signs of recovery while others continue to struggle. The SEI-EVM network is still in its early stages, with limited market data available.",
+                        "totalMarketCap": 0,
+                        "volume24h": 0,
+                        "activeTokens": 0,
+                        "marketChange24h": 0,
+                        "sentiment": "mixed"
+                    },
+                    "keyMetrics": {
+                        "avgPrice": 0,
+                        "avgChange24h": 0,
+                        "volatilityIndex": 0,
+                        "liquidityScore": 0.2,
+                        "adoptionRate": 0.05
+                    },
+                    "technicalSignals": {
+                        "trend": "sideways",
+                        "strength": 0.3,
+                        "support": 0,
+                        "resistance": 0,
+                        "rsi": 50,
+                        "volume": 0
+                    },
+                    "fundamentalScore": {
+                        "ecosystemHealth": 0.4,
+                        "developmentActivity": 0.6,
+                        "partnershipStrength": 0.2,
+                        "adoptionGrowth": 0.1,
+                        "overallScore": 0.33
+                    },
+                    "keyInsights": [
+                        "Network showing moderate trading activity",
+                        "0 tokens actively trading with established liquidity",
+                        "Market focus on SEI"
+                    ]
+                },
+                "recommendations": [
+                    {
+                        "token": "SEI",
+                        "action": "WATCH",
+                        "confidence": 60,
+                        "targetPrice": 0,
+                        "currentPrice": 0,
+                        "upside": 0,
+                        "riskScore": 70,
+                        "timeframe": "short-term",
+                        "reasoning": "Limited market data and liquidity concerns warrant a cautious approach."
+                    }
+                ],
+                "marketContext": {
+                    "dataSource": "real-time_crypto_markets",
+                    "lastUpdated": "2025-08-21T14:55:37.391Z",
+                    "tokensAnalyzed": 1,
+                    "aiModel": "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
+                },
+                "actionableInsights": [
+                    "Monitor network ecosystem developments and protocol updates",
+                    "Consider dollar-cost averaging for long-term positions",
+                    "Set up price alerts for key support and resistance levels"
+                ],
+                "riskWarnings": [
+                    "Cryptocurrency investments carry high volatility and risk of total loss",
+                    "Some tokens may have limited liquidity compared to major cryptocurrencies",
+                    "Regulatory changes could impact token availability and trading"
+                ],
+                "nextSteps": [
+                    "Research specific tokens mentioned in analysis",
+                    "Review your risk tolerance and investment timeline",
+                    "Consider starting with small position sizes"
+                ]
+            },
+            "status": "completed",
+            "processingMethod": "ai_powered_market_analysis",
+            "confidence": "medium"
+        }
+    },
+    "timestamp": "2025-08-21T14:55:48.353Z"
+}

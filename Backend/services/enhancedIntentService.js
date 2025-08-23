@@ -368,7 +368,33 @@ Respond with JSON: {"args": {extracted_arguments}}`;
         ...userResponses
       };
 
-      // Re-validate with complete arguments
+      // For transfer actions, use Enhanced Transfer Service
+      if (originalIntent.extraction.actionType === 'transfer') {
+        console.log('🔄 Using Enhanced Transfer Service for interactive response');
+        console.log('📋 Merged arguments:', mergedArgs);
+        
+        const EnhancedTransferService = require('./enhancedTransferService');
+        const enhancedTransferService = new EnhancedTransferService();
+        
+        // Create resolved arguments object with all transfer parameters
+        const resolvedArgs = {
+          amount: mergedArgs.amount || originalIntent.extraction.args.amount,
+          token: mergedArgs.tokenId || originalIntent.extraction.args.tokenId || 'SEI',
+          recipient: mergedArgs.recipient || originalIntent.extraction.args.recipient
+        };
+        
+        console.log('📝 Resolved arguments:', resolvedArgs);
+        
+        // Use direct argument processing instead of re-analyzing message
+        const transferResult = await enhancedTransferService.processTransferWithArgs(
+          resolvedArgs,
+          originalIntent.userId || 'default-user'
+        );
+        
+        return transferResult;
+      }
+
+      // For non-transfer actions, use the old validation system
       const validation = this.contactsTokensService.validateActionArguments(
         originalIntent.extraction.actionType,
         mergedArgs
@@ -399,6 +425,21 @@ Respond with JSON: {"args": {extracted_arguments}}`;
       console.error('❌ Interactive response processing failed:', error);
       throw error;
     }
+  }
+
+  /**
+   * Build a resolved message from original intent and user responses
+   */
+  buildResolvedMessage(originalIntent, mergedArgs) {
+    const { actionType } = originalIntent.extraction;
+    
+    if (actionType === 'transfer') {
+      const { amount, tokenId = 'SEI', recipient } = mergedArgs;
+      return `send ${amount} ${tokenId} to ${recipient}`;
+    }
+    
+    // For other actions, return original message
+    return originalIntent.extraction.originalMessage;
   }
 
   /**

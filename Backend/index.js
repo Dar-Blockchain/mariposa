@@ -10,18 +10,31 @@ const swaggerSpecs = require('./config/swagger');
 dotenv.config();
 
 // Import database connection
-const connectDB = require('./config/database');// Import routes
+const connectDB = require('./config/database');
+
+// Initialize MCP Market Data Service early
+let mcpService = null;
+console.log('🔄 MCP Market Data Service temporarily disabled for debugging...');
+// try {
+//   const MCPMarketDataService = require('./services/mcpMarketDataService');
+//   mcpService = new MCPMarketDataService();
+//   console.log('✅ MCP Market Data Service initialized');
+// } catch (mcpError) {
+//   console.warn('⚠️ MCP Market Data Service failed to initialize:', mcpError.message);
+// }// Import routes
 const userRoutes = require('./routes/userRoutes');
 const productRoutes = require('./routes/productRoutes');
 const aiAgentRoutes = require('./routes/aiAgentRoutes');
 const agentRoutes = require('./routes/agentRoutes');
 const walletRoutes = require('./routes/walletRoutes');
 const agentChatRoutes = require('./routes/agentChatRoutes');
-const simpleHederaAgentRoutes = require('./routes/simpleHederaAgents');
 const authRoutes = require('./routes/authRoutes');
 const executorAgentRoutes = require('./routes/executorAgentRoutes');
 const enhancedIntentRoutes = require('./routes/enhancedIntentRoutes');
-const hederaAgentsRoutes = require('./routes/hederaAgentsRoutes');
+const enhancedTransferRoutes = require('./routes/enhancedTransferRoutes');
+const seiAgentRoutes = require('./routes/seiAgentRoutes');
+const mcpMarketDataRoutes = require('./routes/mcpMarketDataRoutes');
+const agentExecuteRoutes = require('./routes/agentExecuteRoutes');
 
 // Initialize Express app
 const app = express();
@@ -49,13 +62,15 @@ app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/agent', aiAgentRoutes);
 app.use('/api/agents', agentRoutes);
-// app.use('/api/agents/hedera', simpleHederaAgentRoutes); // Commented out to avoid route conflict
+app.use('/api/agents', agentExecuteRoutes);
+app.use('/api/agents/sei', seiAgentRoutes);
 app.use('/api/wallets', walletRoutes);
 app.use('/api/agent-chat', agentChatRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/executor-agents', executorAgentRoutes);
 app.use('/api/enhanced-intent', enhancedIntentRoutes);
-app.use('/api/hedera/agents', hederaAgentsRoutes);
+app.use('/api/transfer', enhancedTransferRoutes);
+app.use('/api/mcp', mcpMarketDataRoutes);
 
 // Swagger documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
@@ -70,8 +85,10 @@ app.get('/', (req, res) => {
       'Product Management System',
       'AI-Powered Multi-Agent Trading System',
       'SEI Network DEX Integration',
+      'Real-time Market Data via MCP',
       'Memory-Enhanced Conversations',
       'Strategy-Specific Agents (DCA, Momentum, Swing, HODL, Arbitrage, Custom)',
+      'AI-Powered Token Recommendations',
       'Interactive Swagger Documentation'
     ],
     endpoints: {
@@ -81,8 +98,10 @@ app.get('/', (req, res) => {
       products: '/api/products',
       aiAgent: '/api/agent',
       agents: '/api/agents',
+      seiAgents: '/api/agents/sei',
       agentChat: '/api/agent-chat',
-      executorAgents: '/api/executor-agents'
+      executorAgents: '/api/executor-agents',
+      mcpMarketData: '/api/mcp'
     },
     version: '1.0.0',
     timestamp: new Date().toISOString()
@@ -112,7 +131,9 @@ app.use('*', (req, res) => {
         products: '/api/products',
         aiAgent: '/api/agent',
         agents: '/api/agents',
-        agentChat: '/api/agent-chat'
+        seiAgents: '/api/agents/sei',
+        agentChat: '/api/agent-chat',
+        mcpMarketData: '/api/mcp'
       }
   });
 });
@@ -123,8 +144,12 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
   console.log(`📚 Documentation available at http://localhost:${PORT}/api-docs`);
   console.log(`🤖 Multi-Agent System available at /api/agents`);
+  console.log(`⚡ SEI Network Agents available at /api/agents/sei`);
   console.log(`💬 AI Agent Chat available at /api/agent`);
   console.log(`🧠 Intelligent Agent Chat available at /api/agent-chat`);
+  console.log(`📊 Real-time Market Data (MCP) available at /api/mcp`);
+  console.log(`🎯 Token Recommendations available at /api/mcp/recommendations`);
+  console.log(`🌐 SEI Market Data available at /api/mcp/sei/summary`);
   console.log(`❤️  Health check available at http://localhost:${PORT}/health`);
 });
 

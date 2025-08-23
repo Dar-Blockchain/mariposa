@@ -3,7 +3,7 @@ const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const hederaWalletService = require('../services/hederaWalletService');
+const WalletService = require('../services/walletService');
 
 // Helper function to generate JWT token
 const generateToken = (id) => {
@@ -221,8 +221,8 @@ const deleteUser = async (req, res) => {
 // @desc    Register user with wallet
 // @route   POST /api/users/register-with-wallet
 // @access  Public
-// New function to create user with auto-generated Hedera wallet
-const createUserWithHederaWallet = async (req, res) => {
+// Create user with auto-generated SEI EVM wallet
+const createUserWithSeiWallet = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -238,15 +238,15 @@ const createUserWithHederaWallet = async (req, res) => {
       userType = 'human',
       password = null,
       preferences = {},
-      initialBalance = 10 // HBAR
+      initialBalance = 0 // SEI (virtual balance for tracking)
     } = req.body;
 
-    console.log('\n👤 CREATING USER WITH AUTO-GENERATED HEDERA WALLET');
+    console.log('\n👤 CREATING USER WITH AUTO-GENERATED SEI EVM WALLET');
     console.log('═'.repeat(60));
     console.log('📧 Email:', email);
     console.log('👤 Name:', name);
     console.log('🔗 User Type:', userType);
-    console.log('💰 Initial Balance:', initialBalance, 'HBAR');
+    console.log('💰 Initial Balance:', initialBalance, 'SEI');
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
@@ -259,27 +259,27 @@ const createUserWithHederaWallet = async (req, res) => {
 
     console.log('✅ USER VALIDATION PASSED');
 
-    // Create Hedera account
-    console.log('🔄 Creating Hedera account...');
-    const hederaAccount = await hederaWalletService.createNewAccount({
-      initialBalance,
-      memo: `Account for ${name} (${email})`
+    // Create SEI EVM wallet
+    console.log('🔄 Creating SEI EVM wallet...');
+    const walletData = await WalletService.generateWallet({
+      name: name,
+      primaryStrategy: preferences.defaultStrategy || 'DCA'
     });
 
-    console.log('✅ HEDERA ACCOUNT CREATED');
-    console.log('🆔 Account ID:', hederaAccount.accountId);
-    console.log('💰 Initial Balance:', hederaAccount.initialBalance, 'HBAR');
+    console.log('✅ SEI EVM WALLET CREATED');
+    console.log('📱 Wallet Address:', walletData.address);
+    console.log('🌊 Network: SEI EVM (Chain ID: 1329)');
 
     // Create user data
     const userData = {
       name,
       email,
       userType,
-      walletAddress: hederaAccount.accountId, // Use Hedera account ID as wallet address
+      walletAddress: walletData.address, // Use SEI EVM address
       preferences: preferences && Object.keys(preferences).length > 0 ? {
         defaultStrategy: preferences.defaultStrategy || 'DCA',
         riskTolerance: preferences.riskTolerance || 'moderate',
-        preferredTokens: preferences.preferredTokens || ['HBAR', 'USDC', 'WETH'],
+        preferredTokens: preferences.preferredTokens || ['SEI', 'WSEI', 'USDC', 'WETH', 'WBTC'],
         notifications: {
           email: preferences.notifications?.email !== false,
           portfolio: preferences.notifications?.portfolio !== false,
@@ -288,7 +288,7 @@ const createUserWithHederaWallet = async (req, res) => {
       } : {
         defaultStrategy: 'DCA',
         riskTolerance: 'moderate',
-        preferredTokens: ['HBAR', 'USDC', 'WETH'],
+        preferredTokens: ['SEI', 'WSEI', 'USDC', 'WETH', 'WBTC'],
         notifications: {
           email: true,
           portfolio: true,
@@ -308,25 +308,15 @@ const createUserWithHederaWallet = async (req, res) => {
     console.log('✅ USER CREATED');
     console.log('🆔 User ID:', savedUser._id);
 
-    // Create wallet for the user with Hedera credentials
-    const walletData = {
-      address: hederaAccount.accountId,
-      privateKey: hederaAccount.privateKey,
-      publicKey: hederaAccount.publicKey,
-      network: 'hedera-testnet',
-      walletClass: 'hedera'
-    };
-
-    const wallet = Wallet.createForUser(
+    // Create wallet for the user with SEI EVM credentials
+    const savedWallet = await WalletService.createUserWallet(
       savedUser._id,
       savedUser.name,
       walletData,
-      hederaAccount.initialBalance // Initial balance in HBAR
+      initialBalance // Initial balance in SEI
     );
 
-    const savedWallet = await wallet.save();
-
-    console.log('✅ HEDERA WALLET CREATED AND ENCRYPTED');
+    console.log('✅ SEI EVM WALLET CREATED AND ENCRYPTED');
     console.log('🆔 Wallet ID:', savedWallet._id);
     console.log('📱 Wallet Address:', savedWallet.walletAddress);
 
@@ -343,7 +333,7 @@ const createUserWithHederaWallet = async (req, res) => {
       token = generateToken(savedUser._id);
     }
 
-    console.log('🎉 USER REGISTRATION WITH HEDERA WALLET COMPLETED');
+    console.log('🎉 USER REGISTRATION WITH SEI EVM WALLET COMPLETED');
     console.log('═'.repeat(60));
 
     const responseData = {
@@ -360,16 +350,18 @@ const createUserWithHederaWallet = async (req, res) => {
         id: savedWallet._id,
         address: savedWallet.walletAddress,
         network: savedWallet.network,
+        chainId: savedWallet.chainId,
         walletClass: savedWallet.walletClass,
-        balance: { hbar: savedWallet.balance },
+        balance: savedWallet.balance,
         portfolioValue: savedWallet.portfolioValue,
+        seiStatus: savedWallet.getSeiStatus(),
         isActive: savedWallet.isActive
       },
-      hedera: {
-        accountId: hederaAccount.accountId,
-        transactionId: hederaAccount.transactionId,
-        initialBalance: hederaAccount.initialBalance,
-        network: process.env.HEDERA_NETWORK || 'testnet'
+      sei: {
+        network: 'sei-evm',
+        chainId: 1329,
+        rpcUrl: process.env.SEI_RPC_URL || 'https://evm-rpc.sei-apis.com',
+        initialBalance: initialBalance
       }
     };
 
@@ -380,14 +372,14 @@ const createUserWithHederaWallet = async (req, res) => {
     res.status(201).json({
       success: true,
       data: responseData,
-      message: `${userType === 'human' ? 'User' : 'Agent'} registered successfully with Hedera wallet`
+      message: `${userType === 'human' ? 'User' : 'Agent'} registered successfully with SEI EVM wallet`
     });
 
   } catch (error) {
-    console.error('❌ USER-HEDERA-WALLET REGISTRATION ERROR:', error);
+    console.error('❌ USER-SEI-WALLET REGISTRATION ERROR:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to register user with Hedera wallet',
+      message: 'Failed to register user with SEI EVM wallet',
       error: error.message
     });
   }
@@ -413,12 +405,12 @@ const registerUserWithWallet = async (req, res) => {
       preferences = {} 
     } = req.body;
 
-    // If no wallet credentials provided, create with auto-generated Hedera wallet
+    // If no wallet credentials provided, create with auto-generated SEI EVM wallet
     if (!walletAddress || !privateKey || 
         walletAddress === '0x0000000000000000000000000000000000000000' ||
         privateKey === '0x0000000000000000000000000000000000000000000000000000000000000000') {
-      console.log('🔄 No valid wallet credentials provided, creating Hedera wallet...');
-      return createUserWithHederaWallet(req, res);
+      console.log('🔄 No valid wallet credentials provided, creating SEI EVM wallet...');
+      return createUserWithSeiWallet(req, res);
     }
 
     console.log('\n👤 REGISTERING USER WITH PROVIDED WALLET');
@@ -672,7 +664,7 @@ module.exports = {
   updateUser,
   deleteUser,
   registerUserWithWallet,
-  createUserWithHederaWallet,
+  createUserWithSeiWallet,
   getUserWithWallet,
   getUserByEmail
 };

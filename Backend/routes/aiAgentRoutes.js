@@ -113,7 +113,7 @@ router.get('/prices', getCryptoPrices);
  * @swagger
  * /api/agent/route:
  *   post:
- *     summary: Two-layer prompt router with Hedera blockchain execution
+ *     summary: Two-layer prompt router with SEI blockchain execution
  *     description: |
  *       Advanced prompt routing system with real blockchain execution capabilities:
  *       
@@ -124,11 +124,11 @@ router.get('/prices', getCryptoPrices);
  *       
  *       **⚡ Layer 2: Specialized Processing + Execution**
  *       - Routes to specialized LLMs based on message type
- *       - **Actions**: ✅ Fully implemented with Hedera execution (transfer, swap, stake, lend, etc.)
+ *       - **Actions**: ✅ Fully implemented with SEI execution (transfer, swap, stake, lend, etc.)
  *       - **Strategy/Information/Feedbacks**: 🔄 Coming soon
  *       
  *       **🚀 Execution Capabilities:**
- *       - **Transfer**: ✅ Live HBAR & token transfers on Hedera testnet
+ *       - **Transfer**: ✅ Live SEI & token transfers on SEI testnet
  *       - **Swap/Stake/Lend**: 📋 Guidance provided, execution coming soon
  *       - **Security**: Agent-specific credentials, encrypted storage, validation
  *       
@@ -173,9 +173,9 @@ router.get('/prices', getCryptoPrices);
  *                 execute: false
  *             actionExecuteExample:
  *               summary: Action Request (Execute Transfer)
- *               description: Actually executes an HBAR transfer on Hedera testnet
+ *               description: Actually executes a SEI transfer on SEI testnet
  *               value:
- *                 message: "Transfer 5 HBAR to 0.0.1379"
+ *                 message: "Transfer 5 SEI to 0x1234567890abcdef1234567890abcdef12345678"
  *                 userId: "user123"
  *                 agentId: "agent456"
  *                 execute: true
@@ -183,7 +183,7 @@ router.get('/prices', getCryptoPrices);
  *               summary: Action Request (Complex Transfer)
  *               description: Transfer with memo and natural language recipient
  *               value:
- *                 message: "Send 2 HBAR to my business partner memo: 'Monthly payment'"
+ *                 message: "Send 2 SEI to my business partner memo: 'Monthly payment'"
  *                 userId: "user123"
  *                 agentId: "agent456"
  *                 execute: true
@@ -284,22 +284,22 @@ router.get('/prices', getCryptoPrices);
  *                                   properties:
  *                                     transactionId:
  *                                       type: string
- *                                       example: "0.0.1234@1234567890.123456789"
+ *                                       example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
  *                                     status:
  *                                       type: string
  *                                       example: "SUCCESS"
  *                                     fromAccount:
  *                                       type: string
- *                                       example: "0.0.1378"
+ *                                       example: "0x1234567890abcdef1234567890abcdef12345678"
  *                                     toAccount:
  *                                       type: string
- *                                       example: "0.0.1379"
+ *                                       example: "0x9876543210fedcba9876543210fedcba98765432"
  *                                     amount:
  *                                       type: number
  *                                       example: 5
  *                                     currency:
  *                                       type: string
- *                                       example: "HBAR"
+ *                                       example: "SEI"
  *                                     memo:
  *                                       type: string
  *                                       example: "Transfer from agent"
@@ -317,16 +317,16 @@ router.get('/prices', getCryptoPrices);
  *                                       example: 5
  *                                     currency:
  *                                       type: string
- *                                       example: "HBAR"
+ *                                       example: "SEI"
  *                                     from:
  *                                       type: string
- *                                       example: "0.0.1378"
+ *                                       example: "0x1234567890abcdef1234567890abcdef12345678"
  *                                     to:
  *                                       type: string
- *                                       example: "0.0.1379"
+ *                                       example: "0x9876543210fedcba9876543210fedcba98765432"
  *                                     transactionId:
  *                                       type: string
- *                                       example: "0.0.1234@1234567890.123456789"
+ *                                       example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
  *                                     status:
  *                                       type: string
  *                                       example: "SUCCESS"
@@ -336,12 +336,12 @@ router.get('/prices', getCryptoPrices);
  *                                   properties:
  *                                     originalMessage:
  *                                       type: string
- *                                       example: "Transfer 5 HBAR to 0.0.1379"
+ *                                       example: "Transfer 5 SEI to 0x9876543210fedcba9876543210fedcba98765432"
  *                                     extractedDetails:
  *                                       type: object
  *                                     resolvedRecipient:
  *                                       type: string
- *                                       example: "0.0.1379"
+ *                                       example: "0x9876543210fedcba9876543210fedcba98765432"
  *                                     recipientResolved:
  *                                       type: boolean
  *                                       example: false
@@ -385,18 +385,18 @@ router.get('/prices', getCryptoPrices);
  *                         actionType: "transfer"
  *                         executionStatus: "guidance_only"
  *                         steps: 
- *                           - "Connect your Hedera wallet"
- *                           - "Enter recipient address: 0.0.1379"
- *                           - "Enter amount: 5 HBAR"
+ *                           - "Connect your SEI wallet"
+ *                           - "Enter recipient address: 0x9876543210fedcba9876543210fedcba98765432"
+ *                           - "Enter amount: 5 SEI"
  *                           - "Review transaction details"
  *                           - "Sign and submit transaction"
  *                         warnings:
  *                           - "Always verify recipient address before sending"
- *                           - "Ensure sufficient HBAR balance for transaction + fees"
+ *                           - "Ensure sufficient SEI balance for transaction + fees"
  *                         riskLevel: "medium"
  *                         estimatedTime: "2-5 minutes"
  *                     metadata:
- *                       originalMessage: "Transfer 5 HBAR to my friend"
+ *                       originalMessage: "Transfer 5 SEI to my friend"
  *                       processingTime: "1250ms"
  *                       timestamp: "2025-01-15T10:30:00Z"
  *               executionSuccessResponse:
@@ -419,48 +419,48 @@ router.get('/prices', getCryptoPrices);
  *                         actionType: "transfer"
  *                         executionStatus: "completed"
  *                         steps:
- *                           - "Connect your Hedera wallet"
- *                           - "Enter recipient address: 0.0.1379"
- *                           - "Enter amount: 5 HBAR"
+ *                           - "Connect your SEI wallet"
+ *                           - "Enter recipient address: 0x9876543210fedcba9876543210fedcba98765432"
+ *                           - "Enter amount: 5 SEI"
  *                           - "Review transaction details"
  *                           - "Sign and submit transaction"
  *                         warnings:
  *                           - "Always verify recipient address before sending"
- *                           - "Ensure sufficient HBAR balance for transaction + fees"
+ *                           - "Ensure sufficient SEI balance for transaction + fees"
  *                         riskLevel: "medium"
  *                         estimatedTime: "2-5 minutes"
  *                         execution:
  *                           success: true
  *                           transactionDetails:
- *                             transactionId: "0.0.1234@1234567890.123456789"
+ *                             transactionId: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
  *                             status: "SUCCESS"
- *                             fromAccount: "0.0.1378"
- *                             toAccount: "0.0.1379"
+ *                             fromAccount: "0x1234567890abcdef1234567890abcdef12345678"
+ *                             toAccount: "0x9876543210fedcba9876543210fedcba98765432"
  *                             amount: 5
- *                             currency: "HBAR"
+ *                             currency: "SEI"
  *                             memo: "Transfer from Test Agent"
  *                             timestamp: "2025-01-15T10:30:15Z"
  *                           executionSummary:
  *                             action: "transfer"
  *                             amount: 5
- *                             currency: "HBAR"
- *                             from: "0.0.1378"
- *                             to: "0.0.1379"
- *                             transactionId: "0.0.1234@1234567890.123456789"
+ *                             currency: "SEI"
+ *                             from: "0x1234567890abcdef1234567890abcdef12345678"
+ *                             to: "0x9876543210fedcba9876543210fedcba98765432"
+ *                             transactionId: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
  *                             status: "SUCCESS"
  *                           parsedRequest:
- *                             originalMessage: "Transfer 5 HBAR to 0.0.1379"
+ *                             originalMessage: "Transfer 5 SEI to 0x9876543210fedcba9876543210fedcba98765432"
  *                             extractedDetails:
  *                               amount: 5
- *                               currency: "HBAR"
- *                               recipient: "0.0.1379"
- *                               recipientType: "account_id"
- *                               isHbarTransfer: true
+ *                               currency: "SEI"
+ *                               recipient: "0x9876543210fedcba9876543210fedcba98765432"
+ *                               recipientType: "sei_address"
+ *                               isSeiTransfer: true
  *                               needsRecipientResolution: false
- *                             resolvedRecipient: "0.0.1379"
+ *                             resolvedRecipient: "0x9876543210fedcba9876543210fedcba98765432"
  *                             recipientResolved: false
  *                     metadata:
- *                       originalMessage: "Transfer 5 HBAR to 0.0.1379"
+ *                       originalMessage: "Transfer 5 SEI to 0x9876543210fedcba9876543210fedcba98765432"
  *                       processingTime: "3250ms"
  *                       timestamp: "2025-01-15T10:30:00Z"
  *               executionFailureResponse:
@@ -485,7 +485,7 @@ router.get('/prices', getCryptoPrices);
  *                           error: "Insufficient balance for transfer"
  *                           status: "failed"
  *                     metadata:
- *                       originalMessage: "Transfer 100000 HBAR to 0.0.1379"
+ *                       originalMessage: "Transfer 100000 SEI to 0x9876543210fedcba9876543210fedcba98765432"
  *                       processingTime: "2150ms"
  *                       timestamp: "2025-01-15T10:30:00Z"
  *       400:
@@ -587,12 +587,12 @@ router.post('/route', [
  *                               example: ["transfer"]
  *                             network:
  *                               type: string
- *                               example: "hedera-testnet"
+ *                               example: "sei-testnet"
  *                             supportedCurrencies:
  *                               type: array
  *                               items:
  *                                 type: string
- *                               example: ["HBAR", "USDC", "USDT", "BTC", "ETH"]
+ *                               example: ["SEI", "USDC", "USDT", "WBTC", "ETH"]
  *                     usage:
  *                       type: object
  *                       description: Usage statistics
@@ -644,7 +644,7 @@ router.get('/router-info', promptRouterController.getRouterInfo);
  *                       type: object
  *                       description: Description of each action type
  *                       example:
- *                         transfer: "Send HBAR or tokens between accounts"
+ *                         transfer: "Send SEI or tokens between accounts"
  *                         swap: "Exchange one token for another"
  *                         stake: "Stake tokens to earn rewards"
  *                         lend: "Lend assets to earn interest"
@@ -662,12 +662,12 @@ router.get('/router-info', promptRouterController.getRouterInfo);
  *                               type: array
  *                               items:
  *                                 type: string
- *                               example: ["hedera-testnet"]
+ *                               example: ["sei-testnet"]
  *                             currencies:
  *                               type: array
  *                               items:
  *                                 type: string
- *                               example: ["HBAR", "USDC", "USDT"]
+ *                               example: ["SEI", "USDC", "USDT"]
  *                         swap:
  *                           type: object
  *                           properties:

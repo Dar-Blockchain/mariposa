@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const tokenValidationService = require('./tokenValidationService');
 
 class ContactsTokensService {
   constructor() {
@@ -115,40 +116,41 @@ class ContactsTokensService {
    * @returns {Object} Validation result with supported status and error messages
    */
   validateSwapTokens(fromToken, toToken) {
+    console.log(`🔍 Validating swap tokens: ${fromToken} -> ${toToken}`);
+    
+    // Use the new token validation service for SEI-EVM network
+    const validation = tokenValidationService.validateSwapTokens(fromToken, toToken);
+    
     const result = {
-      isValid: true,
-      warnings: [],
-      recommendations: []
+      isValid: validation.isValid,
+      warnings: validation.errors,
+      recommendations: validation.suggestions,
+      fromTokenInfo: validation.fromTokenInfo,
+      toTokenInfo: validation.toTokenInfo
     };
 
-    const supportedTokens = this.getSupportedSwapTokens();
-    const supportedSymbols = supportedTokens.map(t => t.symbol.toUpperCase());
-    
-    const fromTokenUpper = fromToken ? fromToken.toUpperCase() : '';
-    const toTokenUpper = toToken ? toToken.toUpperCase() : '';
-
-    // Check if fromToken is supported
-    if (fromToken && !supportedSymbols.includes(fromTokenUpper)) {
-      result.isValid = false;
-      result.warnings.push(`${fromToken} is not a supported token for swaps on SaucerSwap testnet.`);
-    }
-
-    // Check if toToken is supported
-    if (toToken && !supportedSymbols.includes(toTokenUpper)) {
-      result.isValid = false;
-      result.warnings.push(`${toToken} is not a supported token for swaps on SaucerSwap testnet.`);
-    }
-
-    // Add recommendations if there are issues
+    // Add additional context for the user
     if (!result.isValid) {
-      const topSupportedTokens = supportedTokens
-        .slice(0, 10) // Get top 10 tokens
+      const availableTokens = tokenValidationService.getAllTokens()
+        .slice(0, 8) // Show first 8 tokens
         .map(t => t.symbol)
         .join(', ');
       
-      result.recommendations.push(
-        `Please choose from the supported tokens: ${topSupportedTokens}. For a complete list, check the testnet swap documentation.`
-      );
+      result.recommendations.push(`Available tokens on SEI-EVM: ${availableTokens}`);
+      
+      // Add specific recommendations for common cases
+      if (fromToken && fromToken.toLowerCase() === 'hbar') {
+        result.recommendations.push('On SEI network, use "SEI" instead of "HBAR"');
+      }
+      if (toToken && toToken.toLowerCase() === 'hbar') {
+        result.recommendations.push('On SEI network, use "SEI" instead of "HBAR"');
+      }
+    }
+
+    console.log(`✅ Swap validation result: ${result.isValid ? 'VALID' : 'INVALID'}`);
+    if (!result.isValid) {
+      console.log('❌ Warnings:', result.warnings);
+      console.log('💡 Suggestions:', result.recommendations);
     }
 
     return result;
@@ -479,15 +481,36 @@ class ContactsTokensService {
             missing.push(argName);
           }
         } else if (argName === 'fromToken' || argName === 'toToken' || argName === 'inputToken' || argName === 'outputToken') {
-          // Use testnet swap tokens for swap operations
+          // Use SEI-EVM token validation for swap operations
           const isSwapToken = actionType === 'swap' || argName.includes('Token');
-          console.log(`🔍 Looking for token: "${args[argName]}" (${argName}) in ${isSwapToken ? 'testnet swap tokens' : 'regular tokens'}`);
-          const token = this.findToken(args[argName], isSwapToken);
-          if (token) {
-            console.log(`✅ Found token: ${token.symbol} (${token.id})`);
-            resolved[argName] = token.symbol;
-            resolved[argName + '_resolved'] = token;
+          console.log(`🔍 Looking for token: "${args[argName]}" (${argName}) in ${isSwapToken ? 'SEI-EVM network tokens' : 'regular tokens'}`);
+          
+          let token = null;
+          if (isSwapToken) {
+            // Use the new token validation service for swap tokens
+            token = tokenValidationService.findToken(args[argName]);
+            if (token) {
+              console.log(`✅ Found SEI-EVM token: ${token.symbol} (${token.address})`);
+              resolved[argName] = token.symbol;
+              resolved[argName + '_resolved'] = {
+                symbol: token.symbol,
+                name: token.name,
+                address: token.address,
+                decimals: token.decimals,
+                id: token.address // Use address as ID for compatibility
+              };
+            }
           } else {
+            // Use legacy token lookup for non-swap operations
+            token = this.findToken(args[argName], false);
+            if (token) {
+              console.log(`✅ Found token: ${token.symbol} (${token.id})`);
+              resolved[argName] = token.symbol;
+              resolved[argName + '_resolved'] = token;
+            }
+          }
+          
+          if (!token) {
             console.log(`❌ Token not found: "${args[argName]}" - adding to missing list`);
             missing.push(argName);
           }
@@ -541,25 +564,35 @@ class ContactsTokensService {
       case 'inputToken':
       case 'outputToken':
       case 'tokenId':
-        // Use testnet swap tokens for swap-related operations
-        const tokensSource = forSwap ? this.testnetSwapTokens : this.tokens;
-        
-        if (forSwap && Array.isArray(tokensSource)) {
-          // Handle testnet swap tokens (array format)
-          return tokensSource.map(token => ({
-            value: token.id,
+        if (forSwap) {
+          // Use SEI-EVM network tokens for swap operations
+          return tokenValidationService.getAllTokens().map(token => ({
+            value: token.address,
             label: `${token.name} (${token.symbol})`,
-            category: token.category || 'unknown',
-            symbol: token.symbol
-          })).filter(token => token.symbol && token.id); // Filter out invalid entries
-        } else if (tokensSource && tokensSource.tokens) {
-          // Handle regular tokens (object format)
-          return Object.entries(tokensSource.tokens).map(([symbol, token]) => ({
-            value: token.id,
-            label: `${token.name} (${symbol})`,
-            category: token.category,
-            symbol: symbol
+            category: token.tags ? token.tags[0] : 'token',
+            symbol: token.symbol,
+            address: token.address,
+            decimals: token.decimals
           }));
+        } else {
+          // Use legacy tokens for non-swap operations
+          const tokensSource = this.tokens;
+          if (Array.isArray(tokensSource)) {
+            return tokensSource.map(token => ({
+              value: token.id,
+              label: `${token.name} (${token.symbol})`,
+              category: token.category || 'unknown',
+              symbol: token.symbol
+            })).filter(token => token.symbol && token.id);
+          } else if (tokensSource && tokensSource.tokens) {
+            // Handle regular tokens (object format)
+            return Object.entries(tokensSource.tokens).map(([symbol, token]) => ({
+              value: token.id,
+              label: `${token.name} (${symbol})`,
+              category: token.category,
+              symbol: symbol
+            }));
+          }
         }
         
         return [];

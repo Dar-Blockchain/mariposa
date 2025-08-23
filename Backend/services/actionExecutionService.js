@@ -2,8 +2,8 @@ const ExecutorAgent = require('../models/ExecutorAgent');
 const Strategy = require('../models/Strategy');
 const Agent = require('../models/Agent');
 const User = require('../models/User');
-const hederaTokenService = require('./hederaTokenService');
-const hederaService = require('./hederaService');
+const seiMarketDataService = require('./seiMarketDataService');
+const seiAgentService = require('./seiAgentService');
 const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
 
@@ -82,7 +82,7 @@ class ActionExecutionService {
             priceAlerts: token.alerts || []
           })),
           lastMarketUpdate: new Date(),
-          marketDataProvider: 'hederaTokenService'
+          marketDataProvider: 'seiMarketDataService'
         },
         
         status: 'created'
@@ -167,7 +167,7 @@ class ActionExecutionService {
       };
 
       // Make HTTP call to the existing agent route
-      const response = await axios.post('http://localhost:5001/api/agent/route', agentCreationData, {
+      const response = await axios.post('http://localhost:5000/api/agent/route', agentCreationData, {
         headers: {
           'Content-Type': 'application/json'
         },
@@ -213,7 +213,7 @@ class ActionExecutionService {
 
   /**
    * Alternative flow: Create executor agent using the existing HTTP route
-   * This method demonstrates how to integrate with http://localhost:5001/api/agent/route
+   * This method demonstrates how to integrate with http://localhost:5000/api/agent/route
    * @param {Object} strategyData - Strategy data with action plan
    * @param {String} userId - User ID
    * @param {String} parentAgentId - Parent agent ID (optional)
@@ -294,7 +294,7 @@ class ActionExecutionService {
             priceAlerts: token.alerts || []
           })),
           lastMarketUpdate: new Date(),
-          marketDataProvider: 'hederaTokenService'
+          marketDataProvider: 'seiMarketDataService'
         },
         
         status: 'created'
@@ -572,21 +572,32 @@ class ActionExecutionService {
 
   async getLatestMarketData() {
     try {
-      const topTokens = hederaTokenService.getTopTokens(20);
-      const stats = hederaTokenService.getStats();
+      const supportedTokens = seiMarketDataService.getSupportedTokens();
+      const topTokens = supportedTokens.slice(0, 20); // Get top 20 tokens
+      
+      // Calculate total market metrics from supported tokens
+      const totalMarketCap = topTokens.reduce((sum, token) => {
+        const price = parseFloat(token.price) || 0;
+        const supply = 1000000; // Default supply for calculation
+        return sum + (price * supply);
+      }, 0);
       
       return {
         topTokens: topTokens,
-        hederaStats: stats,
-        marketCap: topTokens.reduce((sum, t) => sum + (parseFloat(t.marketCap) || 0), 0),
-        totalVolume: topTokens.reduce((sum, t) => sum + (parseFloat(t.volume24h) || 0), 0),
+        seiStats: {
+          totalTokens: supportedTokens.length,
+          verifiedTokens: supportedTokens.filter(t => t.verified).length,
+          lastUpdate: new Date().toISOString()
+        },
+        marketCap: totalMarketCap,
+        totalVolume: 0, // Volume data would need API integration
         timestamp: new Date().toISOString()
       };
     } catch (error) {
-      console.error('Error fetching market data:', error);
+      console.error('Error fetching SEI market data:', error);
       return {
         topTokens: [],
-        hederaStats: {},
+        seiStats: {},
         marketCap: 0,
         totalVolume: 0,
         timestamp: new Date().toISOString()

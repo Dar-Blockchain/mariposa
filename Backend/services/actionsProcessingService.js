@@ -1,11 +1,11 @@
 const Together = require('together-ai').default;
-const hederaAgentKitService = require('./hederaAgentKitService');
-const SaucerSwapService = require('./saucerSwapService');
+const seiAgentService = require('./seiAgentService');
+const seiMarketDataService = require('./seiMarketDataService');
 const ContactsTokensService = require('./contactsTokensService');
 const Agent = require('../models/Agent');
+const { SimpleAgent } = require('../agent-sdk/dist');
 
 // Create service instances
-const saucerSwapService = new SaucerSwapService();
 const contactsTokensService = new ContactsTokensService();
 
 // Initialize Together AI for actions processing
@@ -23,7 +23,7 @@ class ActionsProcessingService {
   constructor() {
     this.supportedActions = [
       'transfer', 'swap', 'stake', 'lend', 'borrow', 'bridge',
-      'buy', 'sell', 'mint', 'burn', 'other'
+      'buy', 'sell', 'mint', 'burn', 'balance', 'other'
     ];
   }
 
@@ -197,15 +197,15 @@ class ActionsProcessingService {
    * @returns {Object} System and user prompts
    */
   buildActionPrompt(message, actionSubtype, execute = false) {
-    const baseSystem = `You are a specialized crypto DeFi actions expert. Your job is to analyze user requests and provide detailed actionable instructions for blockchain operations on the Hedera network using SaucerSwap.
+    const baseSystem = `You are a specialized crypto DeFi actions expert. Your job is to analyze user requests and provide detailed actionable instructions for blockchain operations on the SEI EVM network using smart contracts.
 
 IMPORTANT CONTEXT:
-- All operations are on Hedera network
-- Supported tokens: HBAR, USDC, USDT, SAUCE, WBTC, WETH
-- Use SaucerSwap V2 for swaps (integrated and ready for execution)
+- All operations are on SEI EVM network (Chain ID: 1329)
+- Supported tokens: SEI, WSEI, USDC, USDT, WETH, WBTC, iSEI, USDa, syUSD, SolvBTC, FXS, MAD, FASTUSD
+- Use SEI EVM smart contracts for swaps and transfers (integrated and ready for execution)
 - Always consider gas fees and slippage
 - Prioritize user safety and security
-- Real swap execution is available through SaucerSwap integration
+- Real swap execution is available through SEI smart contract integration
 
 `;
 
@@ -226,7 +226,7 @@ Response format (METRICS-FOCUSED):
   "status": "ready|pending|executing|completed|failed",
   "userMessage": "Brief friendly message about the action",
   "transaction": {
-    "fromToken": "HBAR",
+    "fromToken": "SEI",
     "amount": 50.00,
     "recipient": "0.0.12345",
     "estimatedGasFee": 0.001,
@@ -254,13 +254,13 @@ Response format (METRICS-FOCUSED):
 }`,
 
       swap: `SWAP SPECIALIST:
-You help users swap tokens on SaucerSwap V2 efficiently with REAL EXECUTION capability.
+You help users swap tokens on SEI EVM efficiently with REAL EXECUTION capability.
 
 Key considerations:
-- Current market prices and slippage on Hedera/SaucerSwap
-- SaucerSwap V2 routing for optimal rates  
+- Current market prices and slippage on SEI EVM/Sailor DEX
+- AgenticRouter smart contract routing for optimal rates  
 - Price impact warnings for large swaps
-- Gas fee estimation for Hedera network
+- Gas fee estimation for SEI network
 - Timing recommendations based on market conditions
 - IMPORTANT: Swaps will be ACTUALLY EXECUTED when user requests it
 
@@ -573,8 +573,8 @@ Response format:
     try {
       console.log('🔍 Parsing action request for evaluation topic creation...');
       
-      // Parse transfer details from the message
-      const parseResult = await hederaAgentKitService.parseTransferRequest(message, agentId);
+      // Parse transfer details from the message (simplified parsing)
+      const parseResult = this.parseTransferRequest(message);
       
       if (!parseResult.success) {
         throw new Error('Failed to parse transfer details');
@@ -612,12 +612,10 @@ Response format:
       
         let agentid_ =await Agent.findById(agentId)
         
-        transferResult = await hederaAgentKitService.transferToken({
-          fromAgentId: agentid_.hederaAccountId,
-          toAccountId: resolvedRecipient,
-          tokenId: details.tokenId,
-          amount: details.amount,
-          memo: details.memo || `${details.currency} transfer from ${parseResult.fromAgent.name}`
+        transferResult = await seiAgentService.executeTransfer(agentId, {
+          token: details.currency || 'SEI',
+          to: resolvedRecipient,
+          amount: details.amount
         });
       
       console.log(transferResult)
@@ -651,7 +649,7 @@ Response format:
   }
 
   /**
-   * Execute swap action using SaucerSwap
+   * Execute swap action using SEI smart contracts
    * @param {string} message - User's message
    * @param {string} agentId - Agent ID
    * @param {Object} actionResult - Processed action result
@@ -662,8 +660,8 @@ Response format:
       console.log('🔍 Parsing swap request for execution...');
       console.log('📝 Original message:', message);
       
-      // Parse swap details from the message using SaucerSwap service
-      const swapDetails = await saucerSwapService.parseSwapIntentWithLLM(message);
+      // Parse swap details from the message using AI
+      const swapDetails = await this.parseSwapIntentWithAI(message);
       console.log('📊 Parsed swap details:', JSON.stringify(swapDetails, null, 2));
       
       if (!swapDetails.isSwap) {
@@ -681,57 +679,123 @@ Response format:
         throw new Error(`Missing token information. From: ${swapDetails.fromToken}, To: ${swapDetails.toToken}`);
       }
 
-      // Get agent information
-      const agent = await Agent.findById(agentId);
+      // Get agent information with private key
+      const agent = await Agent.findById(agentId).select('+seiPrivateKey');
       if (!agent) {
         throw new Error('Agent not found');
       }
 
-      // Convert token symbols to contract addresses/IDs
-      const inputTokenId = this.resolveTokenId(swapDetails.fromToken);
-      const outputTokenId = this.resolveTokenId(swapDetails.toToken);
+      // Note: Token validation is now handled by the tokenValidationService in earlier steps
 
-      // Calculate amounts in smallest units
-      const decimals = this.getTokenDecimals(swapDetails.fromToken);
-      const amountIn = this.toSmallestUnit(swapDetails.amount || 1, decimals);
+      // Get recipient address (agent's SEI wallet address)
+      const recipientAddress = agent.seiAddress;
       
-      // Calculate minimum amount out with slippage tolerance
-      const estimatedAmountOut = await this.estimateSwapOutput(
-        inputTokenId,
-        outputTokenId,
-        amountIn
-      );
+      // Default slippage tolerance
+      const slippageTolerance = swapDetails.slippageTolerance || 5; // 5% default
       
-      // Get recommended slippage based on token pair
-      const recommendedSlippage = saucerSwapService.getRecommendedSlippage(
-        swapDetails.fromToken, 
-        swapDetails.toToken
-      );
-      const slippageTolerance = swapDetails.slippageTolerance || recommendedSlippage;
+      console.log(`💡 Using slippage tolerance: ${slippageTolerance}%`);
       
-      console.log(`💡 Using slippage tolerance: ${slippageTolerance}% (recommended: ${recommendedSlippage}%)`);
-      
-      const slippageMultiplier = (100 - slippageTolerance) / 100;
-      const amountOutMin = Math.floor(estimatedAmountOut * slippageMultiplier);
-
-      // Prepare swap parameters for SaucerSwap service
+      // Prepare swap parameters for SEI smart contract
       const swapParams = {
-        inputToken: swapDetails.fromToken,
-        outputToken: swapDetails.toToken,
-        amountIn: amountIn,
-        amountOut: estimatedAmountOut,
-        swapType: 'exactInput', // Default to exactInput
-        recipient: agent.hederaAccountId,
+        agentId: agentId,
+        fromToken: swapDetails.fromToken,
+        toToken: swapDetails.toToken,
+        amount: swapDetails.amount || '1',
+        recipient: recipientAddress,
         slippageTolerance: slippageTolerance
       };
 
-      console.log('🔄 Executing swap with SaucerSwap:', swapParams);
-      console.log(agent,"......../////..")
-      // Get Hedera client for the agent
-      const hederaClient = await this.getHederaClientForAgent(agent);
+      console.log('🔄 Executing swap with Agent SDK:', swapParams);
+      
+      // Initialize Agent SDK instance for this agent
+      if (!agent.seiPrivateKey) {
+        throw new Error('Agent does not have a private key configured');
+      }
+      
+      // Decrypt the private key
+      const decryptedPrivateKey = seiAgentService.decryptPrivateKey(agent.seiPrivateKey);
+      
+      const agentConfig = {
+        privateKey: decryptedPrivateKey,
+        address: agent.seiAddress,
+        rpcUrl: process.env.SEI_RPC_URL || 'https://evm-rpc.sei-apis.com',
+        chainId: process.env.SEI_CHAIN_ID || '1329',
+        contractAddresses: {
+          agenticRouter: process.env.AGENTIC_ROUTER_ADDRESS || '0x1234567890123456789012345678901234567890',
+          wsei: process.env.WSEI_ADDRESS || '0xE30feDd158A2e3b13e9badaeABaFc5516e963E83',
+          usdc: process.env.USDC_ADDRESS || '0x3894085Ef7Ff0f0aeDf52E2A2704928d259f9c3a'
+        }
+      };
 
-      // Execute the swap using SaucerSwap service
-      const swapResult = await saucerSwapService.executeSwap(swapParams, hederaClient);
+      const simpleAgent = new SimpleAgent(agentConfig);
+      await simpleAgent.initialize();
+
+      // Execute the swap using Agent SDK
+      let swapResult;
+      
+      if (swapDetails.fromToken.toUpperCase() === 'SEI') {
+        // Native SEI to Token swap using Agent SDK (payable, no approval needed)
+        const tokenValidationService = require('./tokenValidationService');
+        const toTokenInfo = tokenValidationService.findToken(swapDetails.toToken);
+        if (!toTokenInfo) {
+          throw new Error(`Token ${swapDetails.toToken} not found in token list`);
+        }
+        
+        console.log(`🔄 Native SEI → ${swapDetails.toToken} swap (using swapSeiToToken)`);
+        console.log(`📋 Token address: ${toTokenInfo.address}`);
+        console.log(`💰 Amount: ${swapParams.amount} SEI`);
+        console.log(`🎯 Slippage: ${slippageTolerance}%`);
+        
+        swapResult = await simpleAgent.swapSeiToToken({
+          tokenOut: toTokenInfo.address,
+          amountIn: swapParams.amount.toString(),
+          slippageTolerance: slippageTolerance,
+          recipient: recipientAddress
+        });
+      } else if (swapDetails.toToken.toUpperCase() === 'SEI') {
+        // Token to Native SEI swap using Agent SDK  
+        const tokenValidationService = require('./tokenValidationService');
+        const fromTokenInfo = tokenValidationService.findToken(swapDetails.fromToken);
+        if (!fromTokenInfo) {
+          throw new Error(`Token ${swapDetails.fromToken} not found in token list`);
+        }
+        
+        console.log(`🔄 ${swapDetails.fromToken} → Native SEI swap (using swapTokenToSei)`);
+        console.log(`📋 Token address: ${fromTokenInfo.address}`);
+        console.log(`💰 Amount: ${swapParams.amount} ${swapDetails.fromToken}`);
+        
+        swapResult = await simpleAgent.swapTokenToSei({
+          tokenIn: fromTokenInfo.address,
+          amountIn: swapParams.amount.toString(),
+          slippageTolerance: slippageTolerance,
+          recipient: recipientAddress
+        });
+      } else {
+        // Token to Token swap using Agent SDK (requires approval)
+        const tokenValidationService = require('./tokenValidationService');
+        const fromTokenInfo = tokenValidationService.findToken(swapDetails.fromToken);
+        const toTokenInfo = tokenValidationService.findToken(swapDetails.toToken);
+        
+        if (!fromTokenInfo || !toTokenInfo) {
+          throw new Error(`Token not found: ${swapDetails.fromToken} or ${swapDetails.toToken}`);
+        }
+        
+        console.log(`🔄 ${swapDetails.fromToken} → ${swapDetails.toToken} swap (using swapTokenToToken)`);
+        console.log(`📋 From address: ${fromTokenInfo.address}`);
+        console.log(`📋 To address: ${toTokenInfo.address}`);
+        console.log(`💰 Amount: ${swapParams.amount} ${swapDetails.fromToken}`);
+        
+        swapResult = await simpleAgent.swapTokenToToken({
+          tokenIn: fromTokenInfo.address,
+          tokenOut: toTokenInfo.address,
+          amountIn: swapParams.amount.toString(),
+          slippageTolerance: slippageTolerance,
+          recipient: recipientAddress
+        });
+      }
+      
+      // Disconnect the agent
+      await simpleAgent.disconnect();
 
       console.log('✅ Swap executed successfully!');
 
@@ -747,10 +811,11 @@ Response format:
         },
         executionSummary: {
           action: 'swap_execution',
-          transactionId: swapResult.transactionId,
-          swapType: swapResult.swapType,
-          inputAmount: swapParams.amountIn,
-          outputAmount: swapResult.actualAmountOut || swapResult.expectedAmountOut,
+          transactionHash: swapResult.transactionHash,
+          tokenIn: swapResult.tokenIn,
+          tokenOut: swapResult.tokenOut,
+          amountIn: swapResult.amountIn,
+          amountOut: swapResult.amountOut,
           gasUsed: swapResult.gasUsed,
           status: swapResult.success ? 'completed' : 'failed'
         },
@@ -761,6 +826,91 @@ Response format:
       console.error('❌ Swap execution failed:', error);
       throw error;
     }
+  }
+
+  /**
+   * Parse swap intent from message using AI
+   * @param {string} message - User's message
+   * @returns {Object} Parsed swap details
+   */
+  async parseSwapIntentWithAI(message) {
+    try {
+      if (!together) {
+        // Fallback parsing without AI
+        return this.parseSwapIntentBasic(message);
+      }
+
+      const prompt = `Analyze this message and extract swap intent:
+      
+Message: "${message}"
+
+Supported tokens: SEI, WSEI, USDC, USDT, WETH, WBTC, iSEI, USDa, syUSD, SolvBTC, FXS, MAD, FASTUSD
+
+Return JSON:
+{
+  "isSwap": boolean,
+  "fromToken": "token_symbol",
+  "toToken": "token_symbol", 
+  "amount": "numeric_value",
+  "slippageTolerance": number_or_null
+}
+
+Only return the JSON, no explanation.`;
+
+      const response = await together.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo',
+        max_tokens: 200,
+        temperature: 0.1
+      });
+
+      const result = JSON.parse(response.choices[0].message.content.trim());
+      
+      // Validate result
+      if (result.isSwap && (!result.fromToken || !result.toToken)) {
+        result.isSwap = false;
+      }
+      
+      return result;
+      
+    } catch (error) {
+      console.error('Error parsing swap intent with AI:', error);
+      return this.parseSwapIntentBasic(message);
+    }
+  }
+
+  /**
+   * Basic swap intent parsing without AI
+   * @param {string} message - User's message
+   * @returns {Object} Parsed swap details
+   */
+  parseSwapIntentBasic(message) {
+    const lowercaseMessage = message.toLowerCase();
+    const swapKeywords = ['swap', 'exchange', 'convert', 'trade'];
+    
+    const isSwap = swapKeywords.some(keyword => lowercaseMessage.includes(keyword));
+    
+    if (!isSwap) {
+      return { isSwap: false };
+    }
+    
+    // Basic token extraction (very simplified)
+    const supportedTokens = ['SEI', 'WSEI', 'USDC', 'USDT', 'WETH', 'WBTC', 'iSEI', 'USDa', 'syUSD', 'SolvBTC', 'FXS', 'MAD', 'FASTUSD'];
+    const foundTokens = supportedTokens.filter(token => 
+      lowercaseMessage.includes(token.toLowerCase())
+    );
+    
+    // Try to extract amount
+    const amountMatch = message.match(/(\d+(?:\.\d+)?)/);
+    const amount = amountMatch ? amountMatch[1] : '1';
+    
+    return {
+      isSwap: foundTokens.length >= 2,
+      fromToken: foundTokens[0] || null,
+      toToken: foundTokens[1] || null,
+      amount: amount,
+      slippageTolerance: null
+    };
   }
 
   /**
@@ -886,14 +1036,45 @@ Response format:
    * @param {Object} agent - Agent object
    * @returns {Object} Hedera client
    */
-  async getHederaClientForAgent(agent) {
+  /**
+   * Parse transfer request from message (simplified)
+   * @param {string} message - Message to parse
+   * @returns {Object} Parsed transfer details
+   */
+  parseTransferRequest(message) {
     try {
-      // Use the Hedera agent kit service to get client for the agent
-      const { client } = await hederaAgentKitService.createAgentToolkit(agent._id);
-      return client;
+      // Simple regex-based parsing for transfer requests
+      const transferPatterns = [
+        /transfer\s+(\d+(?:\.\d+)?)\s+(\w+)\s+to\s+(\w+)/i,
+        /send\s+(\d+(?:\.\d+)?)\s+(\w+)\s+to\s+(\w+)/i,
+        /pay\s+(\d+(?:\.\d+)?)\s+(\w+)\s+to\s+(\w+)/i
+      ];
+
+      for (const pattern of transferPatterns) {
+        const match = message.match(pattern);
+        if (match) {
+          const [, amount, currency, recipient] = match;
+          return {
+            success: true,
+            details: {
+              amount: parseFloat(amount),
+              currency: currency.toUpperCase(),
+              recipient: recipient,
+              memo: `Transfer via agent`
+            }
+          };
+        }
+      }
+
+      return {
+        success: false,
+        error: 'Could not parse transfer details from message'
+      };
     } catch (error) {
-      console.error('Error creating Hedera client for agent:', error);
-      throw new Error('Failed to create Hedera client for agent');
+      return {
+        success: false,
+        error: error.message
+      };
     }
   }
 
@@ -924,12 +1105,10 @@ Response format:
         case 'transfer':
           console.log('💸 Executing transfer action...');
           
-          const transferResult = await hederaAgentKitService.transferToken({
-            fromAgentId: agent.hederaAccountId,
-            toAccountId: resolvedArgs.recipient,
-            tokenId: resolvedArgs.tokenId || null,
-            amount: parseFloat(resolvedArgs.amount),
-            memo: `Transfer from agent via interactive command`
+          const transferResult = await seiAgentService.executeTransfer(agent._id, {
+            token: resolvedArgs.token || 'SEI',
+            to: resolvedArgs.recipient,
+            amount: parseFloat(resolvedArgs.amount)
           });
           
           return {
@@ -937,6 +1116,18 @@ Response format:
             transactionDetails: transferResult,
             actionType: 'transfer',
             resolvedArgs: resolvedArgs,
+            timestamp: new Date().toISOString()
+          };
+
+        case 'balance':
+          console.log('💰 Executing balance check...');
+          
+          const balanceResult = await this.executeBalanceCheck(agent._id);
+          
+          return {
+            success: true,
+            balanceDetails: balanceResult,
+            actionType: 'balance',
             timestamp: new Date().toISOString()
           };
           
@@ -1000,15 +1191,14 @@ Response format:
 
       console.log('📝 Swap parameters:', JSON.stringify(swapParams, null, 2));
 
-      // Get agent's Hedera client
-      const hederaClient = await hederaAgentKitService.getClientByAgent(agent);
-      if (!hederaClient) {
-        throw new Error('Failed to get Hedera client for agent');
-      }
-
-      // Execute the swap
-      console.log('🚀 Executing swap through SaucerSwap...');
-      const swapResult = await saucerSwapService.executeSwap(swapParams, hederaClient);
+      // Execute the swap using agent-sdk
+      console.log('🚀 Executing swap through SEI AgenticRouter...');
+      const swapResult = await seiAgentService.executeSwap(agentId, {
+        fromToken: fromTokenResolved.symbol,
+        toToken: toTokenResolved.symbol,
+        amount: amount,
+        slippageTolerance: 15
+      });
 
       console.log('✅ Swap execution completed:', swapResult);
 
@@ -1087,6 +1277,81 @@ Response format:
       
     } catch (error) {
       console.error(`❌ Action execution failed for ${actionType}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute balance check for all tokens in the wallet
+   * @param {string} agentId - Agent ID
+   * @returns {Object} Balance information for all tokens
+   */
+  async executeBalanceCheck(agentId) {
+    try {
+      const agent = await Agent.findById(agentId).select('+seiPrivateKey');
+      if (!agent) {
+        throw new Error('Agent not found');
+      }
+
+      // Decrypt private key
+      const privateKey = agent.seiPrivateKey;
+      if (!privateKey) {
+        throw new Error('Agent private key not found');
+      }
+
+      // Initialize SimpleAgent
+      const simpleAgent = new SimpleAgent(privateKey);
+
+      // Load token list
+      const tokenList = require('../tokeLists.json');
+      
+      // Get SEI balance first
+      const seiBalance = await simpleAgent.getSeiBalance();
+      
+      const balances = [{
+        symbol: 'SEI',
+        name: 'SEI',
+        balance: seiBalance,
+        decimals: 18,
+        address: 'native',
+        logoURI: 'https://sei.io/logo.png'
+      }];
+
+      // Get all token balances
+      for (const token of tokenList.tokens) {
+        // Skip native SEI as we already got it
+        if (token.symbol === 'SEI') continue;
+        
+        try {
+          const tokenBalance = await simpleAgent.getTokenBalance(token.address);
+          
+          // Only include tokens with non-zero balance
+          if (parseFloat(tokenBalance.balance) > 0) {
+            balances.push({
+              symbol: token.symbol,
+              name: token.name,
+              balance: tokenBalance.balance,
+              decimals: token.decimals,
+              address: token.address,
+              logoURI: token.logoURI
+            });
+          }
+        } catch (error) {
+          console.log(`⚠️  Could not fetch balance for ${token.symbol}:`, error.message);
+          // Continue with other tokens
+        }
+      }
+
+      return {
+        address: simpleAgent.config.address,
+        seiBalance: seiBalance,
+        totalTokens: balances.length,
+        balances: balances,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('❌ Balance check failed:', error);
       throw error;
     }
   }

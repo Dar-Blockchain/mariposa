@@ -8,7 +8,7 @@ const {
   updateUser,
   deleteUser,
   registerUserWithWallet,
-  createUserWithHederaWallet,
+  createUserWithSeiWallet,
   getUserWithWallet,
   getUserByEmail
 } = require('../controllers/userController');
@@ -494,7 +494,7 @@ router.post('/create-with-hedera-wallet', [
   body('password').optional().isLength({ min: 6 }).withMessage('Password must be at least 6 characters if provided'),
   body('preferences').optional().isObject().withMessage('Preferences must be an object if provided'),
   body('initialBalance').optional().isNumeric().withMessage('Initial balance must be a number')
-], createUserWithHederaWallet);
+], createUserWithSeiWallet);
 
 /**
  * @swagger

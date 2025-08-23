@@ -66,7 +66,7 @@ export default function LandingPage() {
             <Link href="#how" className="text-gray-700 hover:text-orange-700 hover:underline underline-offset-4 dark:text-neutral-200">How it works</Link>
             <Link href="#automation" className="text-gray-700 hover:text-orange-700 hover:underline underline-offset-4 dark:text-neutral-200">Automation</Link>
             <Link href="#capabilities" className="text-gray-700 hover:text-orange-700 hover:underline underline-offset-4 dark:text-neutral-200">What you can do</Link>
-            <Link href="#hedera" className="text-gray-700 hover:text-orange-700 hover:underline underline-offset-4 dark:text-neutral-200">Built on Hedera</Link>
+            <Link href="#sei" className="text-gray-700 hover:text-orange-700 hover:underline underline-offset-4 dark:text-neutral-200">Built on SEI</Link>
             <Link href="#pricing" className="text-gray-700 hover:text-orange-700 hover:underline underline-offset-4 dark:text-neutral-200">Pricing</Link>
             <Link href="/dashboard" className={`${orangeButton} ml-3 px-4 py-2`}>Launch</Link>
           </nav>
@@ -349,13 +349,13 @@ export default function LandingPage() {
       </section>
 
       {/* Go-to-market */}
-      <section id="hedera" className="mx-auto max-w-7xl px-6 pb-16">
-        <h2 className="text-2xl font-bold">Built on Hedera</h2>
-        <p className="mt-2 max-w-3xl text-gray-600 dark:text-neutral-300">Fast finality, low fees, and enterprise‑grade security. Mariposa is built for HBAR and Hedera Token Service (USDC, USDT, SAUCE).</p>
+      <section id="sei" className="mx-auto max-w-7xl px-6 pb-16">
+        <h2 className="text-2xl font-bold">Built on SEI</h2>
+        <p className="mt-2 max-w-3xl text-gray-600 dark:text-neutral-300">Fast finality, low fees, and EVM compatibility. Mariposa is built for SEI and supports all major tokens (USDC, USDT, WETH, WBTC).</p>
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           {[
-            { title: "HBAR native", desc: "Send, receive, and automate HBAR with smart safeguards." },
-            { title: "SaucerSwap", desc: "Best‑route swaps and strategy automation for SAUCE and pairs." },
+            { title: "SEI native", desc: "Send, receive, and automate SEI with smart safeguards via AgenticRouter." },
+            { title: "DEX Integration", desc: "Best‑route swaps and strategy automation using Sailor Finance." },
             { title: "Stablecoins", desc: "USDC/USDT payments and automated sweeps with triggers." },
           ].map(({ title, desc }) => (
             <div key={title} className="rounded-2xl border border-orange-100 bg-white p-6 shadow-sm dark:border-orange-400/20 dark:bg-neutral-900">

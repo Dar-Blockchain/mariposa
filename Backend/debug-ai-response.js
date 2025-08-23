@@ -4,7 +4,7 @@ async function debugAIResponse() {
   try {
     console.log('🔍 DEBUGGING AI RESPONSE...');
     
-    const response = await axios.post('http://localhost:5001/api/agents/strategy', {
+    const response = await axios.post('http://localhost:5000/api/agents/strategy', {
       message: "I want to invest $1000 in a simple DCA strategy for Bitcoin and Ethereum",
       userId: "debug_user"
     });
