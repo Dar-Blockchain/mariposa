@@ -13,7 +13,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@mariposa-plus/agent-sdk": "^1.0.0",
+    "@mariposa-plus/agent-sdk": "^1.0.1",
     "@modelcontextprotocol/sdk": "^1.17.3",
     "agenda": "^5.0.0",
     "axios": "^1.10.0",
