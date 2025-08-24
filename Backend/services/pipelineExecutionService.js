@@ -2,7 +2,7 @@ const Agenda = require('agenda');
 const mongoose = require('mongoose');
 const Pipeline = require('../models/Pipeline');
 const User = require('../models/User');
-const { SimpleAgent } = require('../agent-sdk');
+const { SimpleAgent } = require('@mariposa-plus/agent-sdk');
 const MCPMarketDataService = require('./mcpMarketDataService');
 
 // Initialize Agenda
