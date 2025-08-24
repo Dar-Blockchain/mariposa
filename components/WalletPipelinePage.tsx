@@ -479,7 +479,7 @@ export default function WalletPipelinePage() {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to save pipeline');
       }
-    } catch (error) {
+    } catch (error:any) {
       console.error('Error saving pipeline:', error);
       alert(`Error saving pipeline: ${error.message}`);
     }
