@@ -1,184 +1,425 @@
-# Mariposa — Hedera Agentic Wallet, HCS Evaluation & Token Ops
+# 🦋 Mariposa - AI-Powered Crypto Trading Platform
 
-Mariposa is an end‑to‑end, agentic wallet and evaluation platform built for the Hedera Hashgraph ecosystem. It combines:
+Mariposa is a comprehensive decentralized AI-powered crypto trading platform built on the SEI blockchain. The platform combines advanced AI agents, smart contract automation, and real-time market data to provide autonomous trading capabilities.
 
-- AI-driven agents with persistent memory for intent understanding
-- Hedera Agent Kit for on-chain actions (HTS token ops, HCS topics, queries)
-- A production-ready Node/Express backend and a Next.js frontend
-- A structured evaluation pipeline over Hedera Consensus Service (HCS)
+## 🌟 Platform Overview
 
-This README emphasizes Hedera capabilities to align with Hedera hackathon requirements.
+Mariposa consists of four main components working together:
 
-## Architecture
+1. **Frontend** - Next.js web application with modern React UI
+2. **Backend** - Express.js API server with AI integration
+3. **Market MCP** - Model Context Protocol server for market data
+4. **Agent SDK** - TypeScript SDK for SEI blockchain trading operations
 
-![Mariposa Architecture](https://res.cloudinary.com/dhbol6euq/image/upload/v1754676846/Mariposa_wallet_3_cfhtbr.png)
+## 🏗️ Architecture
 
-Reference: https://res.cloudinary.com/dhbol6euq/image/upload/v1754676846/Mariposa_wallet_3_cfhtbr.png
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│    Frontend     │────│     Backend     │────│   Market MCP    │
+│   (Next.js)     │    │   (Express)     │    │   (MCP Server)  │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         │              ┌─────────────────┐              │
+         └──────────────│   Agent SDK     │──────────────┘
+                        │  (Trading SDK)  │
+                        └─────────────────┘
+```
 
-## Why Hedera for Mariposa
-
-- Low, predictable fees and carbon‑negative network for consumer-grade UX
-- Fast finality for interactive agent flows and near‑real‑time evaluations
-- HTS (Hedera Token Service) to mint and manage tokens directly via Agent tools
-- HCS (Hedera Consensus Service) to orchestrate transparent, auditable evaluation workflows
-- Mature SDKs and the Hedera Agent Kit for clean, composable tool integrations
-
-## Monorepo Overview
-
-text
-mariposa/
-├─ app/                     # Next.js app (UI)
-├─ components/              # React components (dashboard, wallet, agents)
-├─ Backend/                 # Node/Express API with Hedera integrations
-│  ├─ controllers/          # Hedera + agent controllers
-│  ├─ routes/               # REST API routes (incl. /hedera-tools/*)
-│  ├─ services/             # Hedera Agent Kit service
-│  ├─ models/               # Mongoose models (Agent, EvaluationTopic, ...)
-│  └─ HEDERA_AGENT_KIT_README.md
-├─ smart-contracts/         # Hardhat project (Sei EVM sample; optional)
-└─ public/                  # Static assets
-
-
-Core Hedera integration lives in:
-
-- Backend/services/hederaAgentKitService.js — Toolkit wiring, HTS/HCS/Queries
-- Backend/controllers/hederaAgentKitController.js — REST handlers
-- Backend/routes/hederaAgentKit.js — Exposes /hedera-tools/* endpoints
-
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- Node.js ≥ 18, npm
-- MongoDB instance
-- Hedera testnet account (Account ID, Private Key, Public Key)
+- Node.js 18+ 
+- MongoDB
+- Git
 
-### 1) Backend setup
+### 1. Clone the Repository
 
-bash
+```bash
+git clone https://github.com/your-org/mariposa.git
+cd mariposa
+```
+
+### 2. Environment Setup
+
+Create environment files for each component:
+
+```bash
+# Frontend environment
+cp .env.local.example .env.local
+
+# Backend environment  
+cp Backend/.env.example Backend/.env
+
+# Edit the files with your configuration
+```
+
+### 3. Install Dependencies
+
+```bash
+# Install frontend dependencies
+npm install
+
+# Install backend dependencies
+cd Backend && npm install
+
+# Install market-mcp dependencies
+cd ../market-mcp && npm install
+
+# Install agent-sdk dependencies  
+cd ../Backend/agent-sdk && npm install
+```
+
+### 4. Start Development Servers
+
+```bash
+# Terminal 1: Start Backend
 cd Backend
-npm install
-cp config/env.example .env
-# Edit .env with:
-# HEDERA_ACCOUNT_ID=0.0.xxxxx
-# HEDERA_PRIVATE_KEY=...
-# HEDERA_PUBLIC_KEY=...
-# HEDERA_NETWORK=testnet
-# MONGODB_URI=mongodb://localhost:27017/mariposa
 npm run dev
-# API at http://localhost:5000
-# Swagger (if enabled) at http://localhost:5000/api-docs
 
-
-### 2) Frontend setup
-
-bash
-cd ..
-npm install
+# Terminal 2: Start Frontend
 npm run dev
-# Next.js at http://localhost:3000
 
+# Terminal 3: Start Market MCP
+cd market-mcp
+npm run dev
+```
 
-## Hedera Feature Highlights in Mariposa
+Visit `http://localhost:3002` to access the application.
 
-- HTS Fungible Token creation via Agent tools
-- HCS Topic creation and message submission for evaluations
-- HBAR balance queries (agent and arbitrary account)
-- Agent‑scoped credentials: each agent signs with its own Hedera keys
+## 📦 Components Overview
 
-## Key REST Endpoints (Hedera)
+### 🎨 Frontend (Next.js Application)
 
-Base path: /hedera-tools
+**Location**: Root directory  
+**Port**: 3002  
+**Framework**: Next.js 14 with TypeScript
 
-- GET /tools?agentId=AGENT_ID — List available Hedera tools for the agent
-- GET /client-info — Hedera client status
-- GET /balance?accountId=0.0.xxx&agentId=AGENT_ID — Query HBAR balance
-- GET /my-balance?agentId=AGENT_ID — Query agent’s own HBAR balance
-- POST /create-token — Create HTS fungible token
-  - Body: { name, symbol, decimals, initialSupply, agentId, treasuryAccount? }
-- POST /create-topic — Create HCS topic
-  - Body: { memo?, adminKey?, submitKey?, agentId }
-- POST /submit-message — Submit message to HCS topic
-  - Body: { topicId, message, agentId }
-- POST /create-evaluation-topic — HCS topic for candidate evaluation (HCS‑11 memo style)
-  - Body: { company, postId, candidateName, candidateId?, agentId }
-- POST /submit-evaluation-message — HCS‑11 evaluation message
-  - Body: { topicId, agentId, evaluation: { passed, score?, feedback?, interviewNotes? } }
-- POST /send-validation-message — HCS‑11 validation message
-  - Body: { topicId, agentId, evaluation: { passed, score?, feedback?, interviewNotes? } }
-- GET /evaluation-topic/:topicId — Topic details and messages
-- GET /evaluation-topics?company=...&postId=...&status=... — Filtered topics
+#### Key Features:
+- **Authentication System**: OTP-based phone authentication
+- **Wallet Management**: Crypto wallet creation and management  
+- **Trading Dashboard**: Real-time trading interface
+- **Agent Management**: Create and manage AI trading agents
+- **Pipeline System**: Automated trading pipeline configuration
+- **Portfolio Tracking**: Real-time portfolio monitoring
 
-Example: Create a token
+#### Technology Stack:
+- **Framework**: Next.js 14, React 18
+- **Styling**: Tailwind CSS, Radix UI components
+- **State Management**: Redux Toolkit with Redux Persist
+- **Authentication**: JWT with OTP verification
+- **Charts**: Recharts for data visualization
+- **Forms**: React Hook Form
 
-bash
-curl -X POST http://localhost:5000/hedera-tools/create-token \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Mariposa Token",
-    "symbol": "MARI",
-    "decimals": 2,
-    "initialSupply": 100000,
-    "agentId": "<AGENT_DB_ID>",
-    "treasuryAccount": "0.0.xxxxx"
-  }'
+#### Directory Structure:
+```
+├── app/                 # Next.js app router
+│   ├── api/            # API routes
+│   ├── auth/           # Authentication pages
+│   ├── dashboard/      # Main dashboard
+│   └── trading/        # Trading interface
+├── components/         # React components
+│   ├── ui/            # Base UI components (Radix)
+│   ├── auth/          # Auth-related components
+│   └── landing/       # Landing page components
+├── lib/               # Utilities and configurations
+├── hooks/             # Custom React hooks
+└── public/            # Static assets
+```
 
-
-## Frontend (Next.js) Highlights
-
-- app/(authenticated)/dashboard — Main dashboard
-- components/WalletDashboard.tsx, WalletPage.tsx, WalletPipelinePage.tsx — Wallet and pipeline UX
-- components/MasterAgentChat.tsx — Agent chat with memory‑augmented reasoning
-
-## Environment Variables (Backend)
-
-Minimum required in Backend/.env:
-
-bash
-HEDERA_ACCOUNT_ID=0.0.123456
-HEDERA_PRIVATE_KEY=302e0201...
-HEDERA_PUBLIC_KEY=302a3005...
-HEDERA_NETWORK=testnet
-MONGODB_URI=mongodb://localhost:27017/mariposa
-WALLET_ENCRYPTION_KEY=change-me
-
-
-Notes:
-
-- Private keys may be stored encrypted at rest; the service transparently decrypts using WALLET_ENCRYPTION_KEY.
-- Testnet by default; switch to mainnet by setting HEDERA_NETWORK=mainnet.
-
-## Hackathon Story (What to Demo)
-
-- Problem: Coordinating trustable candidate evaluations and tokenized incentives is hard across teams; actions must be auditable and inexpensive.
-- Solution: Mariposa agents run decisioning, mint tokens, and immutably log evaluation messages on HCS; reviewers collaborate through agentic flows.
-- Why Hedera: predictable low fees, fast finality, robust HCS/HTS tooling, great developer ergonomics via Hedera Agent Kit.
-- Impact: Teams get an agentic “evaluation & wallet copilot” with verifiable on‑chain traces and programmable incentives.
-
-## Security & Compliance
-
-- Never commit secrets. Use environment variables.
-- Private keys are not returned in API responses.
-- Rate limiting, input validation, and auth middleware are in place and easily extended.
-
-## Testing
-
-Backend sample tests and scripts are included (see Backend/test-*.js). For Hedera tools:
-
-bash
-node Backend/test-hedera-agent-kit.js
-
-
-## Deployment
-
-- Backend: containerize Node/Express; provide .env at runtime; connect to managed MongoDB
-- Frontend: build Next.js and deploy to your preferred platform
-- Hedera: use testnet for staging; switch to mainnet with proper keys and budgets
-
-## License
-
-MIT
+#### Key Routes:
+- `/` - Landing page
+- `/auth` - Authentication flow
+- `/dashboard` - Main user dashboard
+- `/trading` - Trading interface
+- `/agents` - AI agent management
+- `/pipeline` - Trading pipeline configuration
 
 ---
 
-Architecture image source: [Mariposa Architecture (Cloudinary)](https://res.cloudinary.com/dhbol6euq/image/upload/v1754676846/Mariposa_wallet_3_cfhtbr.png)
+### ⚙️ Backend (Express.js API)
+
+**Location**: `./Backend`  
+**Port**: 5000  
+**Framework**: Express.js with Node.js
+
+#### Key Features:
+- **User Management**: Registration, authentication, profiles
+- **Wallet Service**: Secure crypto wallet operations
+- **AI Agent Integration**: AI-powered trading agents
+- **Trading Engine**: Execute trades via smart contracts
+- **Pipeline System**: Automated trading strategies
+- **Real-time Data**: Market data and portfolio updates
+
+#### Technology Stack:
+- **Framework**: Express.js
+- **Database**: MongoDB with Mongoose
+- **Authentication**: JWT with bcryptjs
+- **AI Integration**: Together AI API
+- **Blockchain**: Ethers.js for SEI network
+- **Security**: Helmet, CORS, rate limiting
+
+#### Directory Structure:
+```
+Backend/
+├── controllers/        # Route controllers
+├── models/            # MongoDB models
+├── routes/            # Express routes
+├── services/          # Business logic services
+├── middleware/        # Custom middleware
+├── config/           # Configuration files
+└── utils/            # Utility functions
+```
+
+#### Key APIs:
+- `POST /api/auth/send-otp` - Send OTP for authentication
+- `POST /api/auth/verify-otp` - Verify OTP and login
+- `GET /api/users/profile` - Get user profile
+- `POST /api/wallets/create` - Create new wallet
+- `GET /api/wallets/balance` - Get wallet balance
+- `POST /api/agents/create` - Create AI agent
+- `POST /api/pipelines/create` - Create trading pipeline
+
+---
+
+### 📊 Market MCP (Market Context Protocol)
+
+**Location**: `./market-mcp`  
+**Port**: 3001  
+**Type**: MCP Server
+
+#### Key Features:
+- **Real-time Market Data**: Live price feeds and market information
+- **Trading Operations**: Execute trades via MCP protocol
+- **Data Aggregation**: Aggregate data from multiple sources
+- **Context Provision**: Provide market context to AI agents
+
+#### Technology Stack:
+- **Framework**: Express.js with TypeScript
+- **Protocol**: Model Context Protocol (MCP)
+- **Data Sources**: Multiple market data providers
+- **Rate Limiting**: Built-in rate limiting
+
+#### MCP Tools Available:
+- `get_market_data` - Fetch current market prices
+- `get_historical_data` - Get historical price data  
+- `execute_trade` - Execute trading operations
+- `get_portfolio` - Retrieve portfolio information
+
+---
+
+### 🔧 Agent SDK (Trading SDK)
+
+**Location**: `./Backend/agent-sdk`  
+**Package**: `@mariposa-plus/agent-sdk`  
+**Version**: 1.0.2
+
+#### Key Features:
+- **SEI Network Integration**: Native SEI blockchain support
+- **Smart Contract Interaction**: Interact with trading contracts
+- **Wallet Management**: Secure wallet operations
+- **Trading Operations**: Execute swaps, transfers, and trades
+- **Type Safety**: Full TypeScript support
+
+#### Technology Stack:
+- **Language**: TypeScript
+- **Blockchain**: Ethers.js v5
+- **Network**: SEI EVM
+- **Math**: BigNumber.js for precision
+
+#### Usage Example:
+```typescript
+import { SimpleAgent } from '@mariposa-plus/agent-sdk';
+
+const agent = new SimpleAgent({
+  privateKey: 'your-private-key',
+  rpcUrl: 'https://evm-rpc.arctic-1.seinetwork.io'
+});
+
+// Execute a token swap
+await agent.swapTokens({
+  tokenIn: 'WSEI',
+  tokenOut: 'USDC',
+  amountIn: '1.0',
+  slippage: 0.01
+});
+```
+
+## 🔐 Environment Configuration
+
+### Frontend (.env.local)
+
+```bash
+# Backend API URL
+NEXT_PUBLIC_API_URL=http://localhost:5000
+
+# JWT Configuration
+NEXT_PUBLIC_JWT_SECRET=your-super-secret-jwt-key-here
+
+# App Configuration
+NEXT_PUBLIC_APP_NAME=Mariposa
+NEXT_PUBLIC_APP_DESCRIPTION=AI-Powered Crypto Trading Platform
+
+# Development Settings
+NODE_ENV=development
+NEXT_PUBLIC_DEBUG=true
+```
+
+### Backend (.env)
+
+```bash
+# Server Configuration
+PORT=5000
+NODE_ENV=development
+
+# Database
+MONGODB_URI=mongodb://localhost:27017/mariposa
+
+# JWT Configuration
+JWT_SECRET=your-super-secret-jwt-key-here
+JWT_EXPIRE=24h
+
+# AI Configuration
+TOGETHER_API_KEY=your-together-ai-api-key-here
+
+# SEI Network Configuration
+SEI_RPC_URL=https://evm-rpc.arctic-1.seinetwork.io
+SEI_CHAIN_ID=arctic-1
+AGENTIC_ROUTER_ADDRESS=0x1234567890123456789012345678901234567890
+
+# Token Addresses (SEI Arctic Testnet)
+WSEI_ADDRESS=0xe30fedd158a2e3b13e9badaeabafc5516e95e8c7
+USDC_ADDRESS=0x3894085ef7ff0f0aedf52e2a2704928d1ec074f1
+USDT_ADDRESS=0x9151434b16b9763660705744891fa906f660ecc5
+
+# Security
+WALLET_ENCRYPTION_KEY=change_this_to_a_secure_key_in_production
+BCRYPT_SALT_ROUNDS=12
+```
+
+## 🛠️ Development
+
+### Available Scripts
+
+#### Frontend
+```bash
+npm run dev          # Start development server
+npm run build        # Build for production  
+npm run start        # Start production server
+npm run lint         # Run ESLint
+```
+
+#### Backend
+```bash
+npm run dev          # Start with nodemon
+npm start            # Start production server
+npm run fix-agent-sdk # Fix agent-sdk issues
+```
+
+#### Market MCP
+```bash
+npm run dev          # Start development server
+npm run build        # Build TypeScript
+npm start            # Start production server
+```
+
+#### Agent SDK
+```bash
+npm run build        # Build TypeScript
+npm run dev          # Watch mode development
+npm run example      # Run example usage
+```
+
+### Development Workflow
+
+1. **Start all services** in development mode
+2. **Frontend**: `http://localhost:3002`
+3. **Backend API**: `http://localhost:5000`  
+4. **Market MCP**: `http://localhost:3001`
+
+### API Documentation
+
+- **Backend API**: `http://localhost:5000/api-docs` (Swagger)
+- **Market MCP**: `http://localhost:3001/docs`
+
+## 🧪 Testing
+
+### Backend Testing
+```bash
+cd Backend
+node test-auth.js           # Test authentication
+node test-wallet-system.js  # Test wallet functionality
+node test-agents.js         # Test AI agents
+```
+
+### Agent SDK Testing
+```bash
+cd Backend/agent-sdk
+node test-sdk.js           # Test SDK functionality
+npm run example            # Run example usage
+```
+
+## 🚀 Deployment
+
+### Production Build
+
+```bash
+# Build frontend
+npm run build
+
+# Install backend production dependencies
+cd Backend && npm ci --only=production
+
+# Build market-mcp
+cd ../market-mcp && npm run build
+
+# Build agent-sdk
+cd ../Backend/agent-sdk && npm run build
+```
+
+### Environment Setup
+
+1. Set `NODE_ENV=production` in all environment files
+2. Configure production database URLs
+3. Set secure JWT secrets
+4. Configure production RPC URLs
+5. Set up proper CORS origins
+
+### Deployment Checklist
+
+- [ ] Environment variables configured
+- [ ] Database connections tested
+- [ ] JWT secrets are secure and unique
+- [ ] API keys are valid
+- [ ] CORS is properly configured
+- [ ] Rate limiting is enabled
+- [ ] SSL certificates are installed
+- [ ] All dependencies are installed
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🆘 Support
+
+- **Documentation**: Check the individual README files in each component directory
+- **Issues**: Report bugs and request features via GitHub Issues
+- **Discord**: Join our community Discord server (link TBD)
+
+## 🔗 Links
+
+- **Agent SDK NPM Package**: [@mariposa-plus/agent-sdk](https://www.npmjs.com/package/@mariposa-plus/agent-sdk)
+- **SEI Network Documentation**: [https://docs.sei.io/](https://docs.sei.io/)
+- **Smart Contracts**: See `./smart-contracts/` directory
+
+---
+
+Built with ❤️ by the Mariposa Team
