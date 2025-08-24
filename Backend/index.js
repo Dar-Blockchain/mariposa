@@ -12,6 +12,9 @@ dotenv.config();
 // Import database connection
 const connectDB = require('./config/database');
 
+// Import pipeline execution service
+const pipelineExecutionService = require('./services/pipelineExecutionService');
+
 // Initialize MCP Market Data Service early
 let mcpService = null;
 console.log('🔄 MCP Market Data Service temporarily disabled for debugging...');
@@ -35,6 +38,8 @@ const enhancedTransferRoutes = require('./routes/enhancedTransferRoutes');
 const seiAgentRoutes = require('./routes/seiAgentRoutes');
 const mcpMarketDataRoutes = require('./routes/mcpMarketDataRoutes');
 const agentExecuteRoutes = require('./routes/agentExecuteRoutes');
+const pipelineRoutes = require('./routes/pipelineRoutes');
+const strategyRoutes = require('./routes/strategyRoutes');
 
 // Initialize Express app
 const app = express();
@@ -71,6 +76,8 @@ app.use('/api/executor-agents', executorAgentRoutes);
 app.use('/api/enhanced-intent', enhancedIntentRoutes);
 app.use('/api/transfer', enhancedTransferRoutes);
 app.use('/api/mcp', mcpMarketDataRoutes);
+app.use('/api/pipelines', pipelineRoutes);
+app.use('/api/strategy', strategyRoutes);
 
 // Swagger documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
@@ -140,7 +147,7 @@ app.use('*', (req, res) => {
 
 // Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
   console.log(`📚 Documentation available at http://localhost:${PORT}/api-docs`);
   console.log(`🤖 Multi-Agent System available at /api/agents`);
@@ -150,7 +157,17 @@ app.listen(PORT, () => {
   console.log(`📊 Real-time Market Data (MCP) available at /api/mcp`);
   console.log(`🎯 Token Recommendations available at /api/mcp/recommendations`);
   console.log(`🌐 SEI Market Data available at /api/mcp/sei/summary`);
+  console.log(`🔧 Pipeline Management available at /api/pipelines`);
+  console.log(`🧠 AI Strategy Recommendations available at /api/strategy`);
   console.log(`❤️  Health check available at http://localhost:${PORT}/health`);
+  
+  // Start pipeline execution service
+  try {
+    await pipelineExecutionService.startAgenda();
+    console.log(`⚙️  Pipeline execution service started successfully`);
+  } catch (error) {
+    console.error('Failed to start pipeline execution service:', error);
+  }
 });
 
 module.exports = app;

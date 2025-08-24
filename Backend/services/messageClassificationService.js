@@ -68,9 +68,10 @@ class MessageClassificationService {
    - INVESTMENT GOALS: "I have $100 and want to double it", "I need to grow my $500", "Help me turn $1000 into $2000", "I want to make money from my investment"
    - Key: User is asking to CREATE something new OR has specific financial goals they want to achieve
 
-2. **actions**: User wants to perform specific blockchain actions
-   - Examples: "Swap my ETH for BTC", "Transfer 100 USDC to my friend", "Stake my SEI tokens", "Lend my USDT"
-   - Key: User wants to DO something specific
+2. **actions**: User wants to perform specific blockchain actions or check wallet/account information
+   - Examples: "Swap my ETH for BTC", "Transfer 100 USDC to my friend", "Stake my SEI tokens", "Lend my USDT", "Show my balance", "Check my wallet", "What's in my wallet?", "Get my portfolio"
+   - BALANCE REQUESTS: "my balance", "wallet balance", "portfolio", "holdings", "what tokens do I have", "check my funds"
+   - Key: User wants to DO something specific or access their personal wallet data
 
 3. **information**: User asking for market data, analysis, opinions on existing opportunities, or educational content
    - Examples: "Is Bitcoin a good investment now?", "What's the current price of ETH?", "Should I buy this token?", "How does staking work?", "Is this a good time to invest?"
@@ -88,7 +89,7 @@ Respond with a JSON object containing:
   "confidence": 0.1-1.0,
   "reasoning": "brief explanation",
   "keywords": ["array", "of", "key", "words"],
-  "actionSubtype": "only if type is actions, specify: transfer|swap|stake|lend|borrow|bridge|buy|sell|mint|burn|other"
+  "actionSubtype": "only if type is actions, specify: transfer|swap|stake|lend|borrow|bridge|buy|sell|mint|burn|balance|other"
 }`;
 
     const user = `Classify this user message: "${message}"`;
@@ -106,7 +107,7 @@ Respond with a JSON object containing:
     const validTypes = ['strategy', 'actions', 'information', 'feedbacks'];
     const validActionSubtypes = [
       'transfer', 'swap', 'stake', 'lend', 'borrow', 'bridge', 
-      'buy', 'sell', 'mint', 'burn', 'other'
+      'buy', 'sell', 'mint', 'burn', 'balance', 'other'
     ];
 
     // Validate type
@@ -160,7 +161,9 @@ Respond with a JSON object containing:
     // Action keywords
     const actionKeywords = [
       'swap', 'transfer', 'send', 'stake', 'lend', 'borrow', 'bridge',
-      'buy', 'sell', 'trade', 'exchange', 'mint', 'burn', 'deposit', 'withdraw'
+      'buy', 'sell', 'trade', 'exchange', 'mint', 'burn', 'deposit', 'withdraw',
+      'balance', 'wallet', 'portfolio', 'holdings', 'my funds', 'my tokens',
+      'check my', 'show my', 'get my'
     ];
 
     // Strategy creation keywords (user wants to CREATE something OR has investment goals)
@@ -294,6 +297,17 @@ Respond with a JSON object containing:
    */
   inferActionSubtype(message) {
     const lowerMessage = message.toLowerCase();
+    
+    // Balance-related keywords
+    if (lowerMessage.includes('balance') || 
+        lowerMessage.includes('wallet') || 
+        lowerMessage.includes('portfolio') || 
+        lowerMessage.includes('holdings') || 
+        lowerMessage.includes('my funds') || 
+        lowerMessage.includes('my tokens') ||
+        lowerMessage.includes('check my') ||
+        lowerMessage.includes('show my') ||
+        lowerMessage.includes('get my')) return 'balance';
     
     if (lowerMessage.includes('swap') || lowerMessage.includes('exchange')) return 'swap';
     if (lowerMessage.includes('transfer') || lowerMessage.includes('send')) return 'transfer';

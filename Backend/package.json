@@ -13,6 +13,7 @@
   "dependencies": {
     "@mariposa-plus/agent-sdk": "file:agent-sdk",
     "@modelcontextprotocol/sdk": "^1.17.3",
+    "agenda": "^5.0.0",
     "axios": "^1.10.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",

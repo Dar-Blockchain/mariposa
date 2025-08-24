@@ -111,6 +111,24 @@ class ActionsProcessingService {
             };
             validatedResult.executionStatus = 'failed';
           }
+        } else if (classification.actionSubtype === 'balance') {
+          console.log('💰 Executing balance check...');
+          try {
+            const balanceResult = await this.executeBalanceCheck(options.agentId);
+            validatedResult.execution = {
+              success: true,
+              balanceDetails: balanceResult,
+              status: 'completed'
+            };
+            validatedResult.executionStatus = 'completed';
+          } catch (executionError) {
+            console.error('❌ Balance check failed:', executionError);
+            validatedResult.execution = {
+              error: executionError.message,
+              status: 'failed'
+            };
+            validatedResult.executionStatus = 'failed';
+          }
         } else {
           validatedResult.execution = {
             message: `Execution not yet supported for ${classification.actionSubtype} actions`,
@@ -1237,8 +1255,37 @@ Only return the JSON, no explanation.`;
     try {
       console.log(`🚀 Executing ${actionType} action with resolved args:`, resolvedArgs);
 
-      // Find an agent for this user (for now, use the first available agent)
-      const userAgents = await Agent.find({ userId: userId, isActive: true }).limit(1);
+      // Find an agent for this user with proper userId handling
+      let userAgents;
+      
+      // Handle different userId formats (ObjectId, email, or fallback string)
+      if (userId.includes('@')) {
+        // This is an email - find user first, then agents
+        const user = await require('../models/User').findOne({ email: userId });
+        if (!user) {
+          throw new Error('User not found with email: ' + userId);
+        }
+        userAgents = await Agent.find({ userId: user._id, isActive: true }).limit(1);
+      } else if (userId === 'user123' || !userId) {
+        // Fallback for test/demo - find any active agent
+        console.log('⚠️  Using fallback agent lookup for demo/test userId:', userId);
+        userAgents = await Agent.find({ isActive: true }).limit(1);
+      } else {
+        try {
+          // Try as ObjectId first
+          userAgents = await Agent.find({ userId: userId, isActive: true }).limit(1);
+        } catch (error) {
+          // If ObjectId cast fails, try finding user by email as fallback
+          const user = await require('../models/User').findOne({ email: userId });
+          if (user) {
+            userAgents = await Agent.find({ userId: user._id, isActive: true }).limit(1);
+          } else {
+            // Final fallback - find any active agent for demo
+            console.log('⚠️  Could not resolve userId, using fallback agent for demo');
+            userAgents = await Agent.find({ isActive: true }).limit(1);
+          }
+        }
+      }
       
       if (!userAgents || userAgents.length === 0) {
         throw new Error('No active agents found for user. Please create an agent first.');
@@ -1299,8 +1346,33 @@ Only return the JSON, no explanation.`;
         throw new Error('Agent private key not found');
       }
 
-      // Initialize SimpleAgent
-      const simpleAgent = new SimpleAgent(privateKey);
+      // Check if agent has address
+      if (!agent.seiAddress) {
+        throw new Error('Agent SEI address not found');
+      }
+
+      // Initialize SimpleAgent with proper configuration
+      const agentConfig = {
+        privateKey: privateKey,
+        address: agent.seiAddress,
+        rpcUrl: process.env.SEI_RPC_URL || 'https://evm-rpc.sei-apis.com',
+        chainId: process.env.SEI_CHAIN_ID || '1329',
+        contractAddresses: {
+          agenticRouter: process.env.AGENTIC_ROUTER_ADDRESS || '0x1234567890123456789012345678901234567890',
+          wsei: process.env.WSEI_ADDRESS || '0xE30feDd158A2e3b13e9badaeABaFc5516e963E83',
+          usdc: process.env.USDC_ADDRESS || '0x3894085Ef7Ff0f0aeDf52E2A2704928d259f9c3a'
+        }
+      };
+
+      console.log('🔧 SimpleAgent config:', {
+        address: agentConfig.address,
+        rpcUrl: agentConfig.rpcUrl,
+        chainId: agentConfig.chainId,
+        hasPrivateKey: !!agentConfig.privateKey
+      });
+
+      const simpleAgent = new SimpleAgent(agentConfig);
+      await simpleAgent.initialize();
 
       // Load token list
       const tokenList = require('../tokeLists.json');

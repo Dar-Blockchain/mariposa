@@ -11,11 +11,11 @@ import PromptResponse from "@/components/landing/PromptResponse";
 export const metadata: Metadata = {
   title: "Mariposa – The Web3 Wallet Powered by Natural Language",
   description:
-    "Hedera-native wallet automation. Create a secure non-custodial wallet with your email, then move HBAR and HTS tokens (USDT, USDC, SAUCE) with simple prompts. Agentic automation on Hedera with low fees and fast finality.",
+    "SEI-native wallet automation. Create a secure non-custodial wallet with your email, then move SEI and tokens (USDT, USDC, WETH, WBTC) with simple prompts. Agentic automation on SEI with fast finality and low fees.",
   openGraph: {
     title: "Mariposa – The Web3 Wallet Powered by Natural Language",
     description:
-      "Hedera-native wallet automation. Send HBAR, swap on SaucerSwap, and automate strategies with natural language.",
+      "SEI-native wallet automation. Send SEI, swap on DEXs, and automate strategies with natural language.",
     url: "https://mariposa.app/landing",
     siteName: "Mariposa",
     images: [
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Mariposa – The Web3 Wallet Powered by Natural Language",
     description:
-      "Hedera-native wallet automation. Send HBAR, swap on SaucerSwap, and automate strategies with natural language.",
+      "SEI-native wallet automation. Send SEI, swap on DEXs, and automate strategies with natural language.",
     images: ["https://mariposa.app/og-image.png"],
   },
 };
@@ -104,13 +104,13 @@ export default function LandingPage() {
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-orange-200/60 bg-white/60 px-3 py-1 text-xs font-medium text-orange-700 shadow-sm backdrop-blur dark:border-orange-400/20 dark:bg-white/5">
                 <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white">M</span>
-                Mariposa • Built on Hedera
+                Mariposa • Built on SEI
               </div>
               <h1 className="mt-4 text-4xl font-extrabold tracking-tight sm:text-5xl">
                 Mariposa: The Web3 Wallet Powered by Natural Language
               </h1>
               <p className="mt-4 text-lg text-gray-600 dark:text-neutral-300">
-                Hedera‑native, non‑custodial wallet automation. Send HBAR and HTS tokens, swap on SaucerSwap, and automate strategies — with simple prompts.
+                SEI‑native, non‑custodial wallet automation. Send SEI and tokens, swap on DEXs, and automate strategies — with simple prompts.
               </p>
               <div className="mt-6 flex flex-wrap items-center gap-3">
                 <Link href="/dashboard" className={orangeButton}>
@@ -132,11 +132,11 @@ export default function LandingPage() {
                 <div className="space-y-3">
                   <div className="rounded-xl bg-neutral-50 p-4 shadow-sm ring-1 ring-orange-100/60 dark:bg-neutral-800">
                   <div className="text-xs text-gray-500">You</div>
-                  <div className="mt-1 text-sm">Send 50 HBAR to Alex</div>
+                  <div className="mt-1 text-sm">Send 50 SEI to Alex</div>
                   </div>
                   <div className="rounded-xl bg-neutral-50 p-4 shadow-sm ring-1 ring-orange-100/60 dark:bg-neutral-800">
                     <div className="text-xs text-gray-500">You</div>
-                  <div className="mt-1 text-sm">Swap USDC → HBAR</div>
+                  <div className="mt-1 text-sm">Swap USDC → SEI</div>
                   </div>
                   <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-orange-100/60 dark:bg-neutral-900">
                     <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -197,19 +197,19 @@ export default function LandingPage() {
             {
               prompt: "Show me a quick transfer",
               response:
-                "I'll transfer 25 HBAR to Sarah’s saved address with memo ‘Thanks!’. Estimated fee: ~0.001 HBAR. You’ll get a confirmation and transaction link.",
+                "I'll transfer 25 SEI to Sarah’s saved address with memo ‘Thanks!’. Estimated fee: ~0.001 SEI. You’ll get a confirmation and transaction link.",
               pill: "Transfer",
               details: [
                 "Recipient: Sarah (0.0.123… masked)",
                 "Network: Hedera mainnet",
-                "Fee estimate: 0.001 HBAR",
+                "Fee estimate: 0.001 SEI",
                 "Security: Non‑custodial + policy checks",
               ],
             },
             {
               prompt: "Can you optimize a swap?",
               response:
-                "I’ll route your $50 USDC → HBAR swap across the best pool. Estimated receive: ~187.3 HBAR with 0.5% slippage tolerance. Executing and monitoring now.",
+                "I’ll route your $50 USDC → SEI swap across the best pool. Estimated receive: ~187.3 SEI with 0.5% slippage tolerance. Executing and monitoring now.",
               pill: "Swap",
               details: [
                 "Router: Best route (multi‑pool)",
@@ -235,7 +235,7 @@ export default function LandingPage() {
             {
               icon: Sparkles,
               title: "Prompt",
-              desc: "Say ‘send HBAR to my friend’. We handle gas & routing.",
+              desc: "Say ‘send SEI to my friend’. We handle gas & routing.",
             },
             {
               icon: LineChart,
@@ -269,9 +269,9 @@ export default function LandingPage() {
           subtitle="Define triggers and conditions in natural language. We execute and report."
           items={[
             {
-              prompt: "When HBAR falls 3% in 24h, buy $20 HBAR",
+              prompt: "When SEI falls 3% in 24h, buy $20 SEI",
               response:
-                "Automation scheduled. I'll watch HBAR change and place a market order for ~$20 HBAR when the threshold hits. You'll get a receipt instantly.",
+                "Automation scheduled. I'll watch SEI change and place a market order for ~$20 SEI when the threshold hits. You'll get a receipt instantly.",
               pill: "Trigger",
               details: [
                 "Trigger window: 24h price change",
@@ -303,8 +303,8 @@ export default function LandingPage() {
         <h2 className="text-2xl font-bold">What you can do on Mariposa</h2>
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           {[
-            { title: 'Send & request', desc: 'Send HBAR, USDC, USDT with prompts. Add memos, saved contacts, and confirmations.' },
-            { title: 'Swap & route', desc: 'Best price routing on SaucerSwap with slippage guard and receipts.' },
+            { title: 'Send & request', desc: 'Send SEI, USDC, USDT with prompts. Add memos, saved contacts, and confirmations.' },
+            { title: 'Swap & route', desc: 'Best price routing on SEI DEXs with slippage guard and receipts.' },
             { title: 'Automate', desc: 'Create rules: triggers, conditions, and actions for repeatable strategies.' },
           ].map(({ title, desc }) => (
             <div key={title} className="rounded-2xl border border-orange-100 bg-white p-6 shadow-sm dark:border-orange-400/20 dark:bg-neutral-900">
@@ -355,7 +355,7 @@ export default function LandingPage() {
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           {[
             { title: "SEI native", desc: "Send, receive, and automate SEI with smart safeguards via AgenticRouter." },
-            { title: "DEX Integration", desc: "Best‑route swaps and strategy automation using Sailor Finance." },
+            { title: "DEX Integration", desc: "Best‑route swaps and strategy automation using DragonSwap and other SEI DEXs." },
             { title: "Stablecoins", desc: "USDC/USDT payments and automated sweeps with triggers." },
           ].map(({ title, desc }) => (
             <div key={title} className="rounded-2xl border border-orange-100 bg-white p-6 shadow-sm dark:border-orange-400/20 dark:bg-neutral-900">
@@ -365,7 +365,7 @@ export default function LandingPage() {
           ))}
         </div>
         <div className="mt-6 flex flex-wrap items-center gap-2">
-          {['HBAR', 'SAUCE', 'USDC', 'USDT'].map((t) => (
+          {['SEI', 'USDC', 'USDT', 'WETH', 'WBTC'].map((t) => (
             <span key={t} className="rounded-full border border-orange-200/60 bg-orange-50 px-3 py-1 text-xs font-medium text-orange-700 dark:border-orange-400/20 dark:bg-orange-400/10 dark:text-orange-300">{t}</span>
           ))}
         </div>

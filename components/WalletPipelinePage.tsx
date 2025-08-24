@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import Link from 'next/link';
 import { useAuth } from '@/components/auth/AuthWrapper';
 import ReactFlow, {
   MiniMap,
@@ -22,51 +21,58 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Wallet, 
   TrendingUp, 
   Bot, 
   Settings, 
-  LogOut, 
-  Copy,
-  ExternalLink,
-  DollarSign,
-  Activity,
-  Users,
-  BarChart3,
-  CreditCard,
-  User,
-  Home,
-  Eye,
-  Plus,
-  ArrowUpRight,
-  ArrowDownLeft,
-  Search,
-  Filter,
-  MoreVertical,
-  Calendar,
-  Sparkles,
-  MessageSquare,
-  ArrowRight,
-  ArrowLeft,
-  Repeat,
-  Target,
-  Shield,
-  Coins,
   Mail,
   Zap,
   CheckCircle,
   Circle,
-  Maximize,
-  Minimize,
-  Lock,
-  Menu,
+  Coins,
+  Shield,
+  Target,
+  Edit,
+  ChevronRight,
+  Plus,
   X,
+  Trash2,
+  Copy,
+  ArrowRight,
+  ArrowLeft,
+  Sparkles,
   GitMerge,
   GitBranch,
-  Edit,
-  ChevronRight
+  Activity,
+  MessageSquare,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Calendar,
+  User,
+  DollarSign,
+  BarChart3,
+  Filter,
+  Eye,
+  Maximize,
+  CreditCard,
+  Lock
 } from 'lucide-react';
+
+interface PipelineStep {
+  id: string;
+  type: 'event' | 'action';
+  category: string;
+  name: string;
+  icon: any;
+  description: string;
+  config?: any;
+  position: { x: number; y: number };
+}
 
 interface ActionType {
   id: string;
@@ -74,603 +80,778 @@ interface ActionType {
   icon: any;
   color: string;
   bgColor: string;
-}
-
-interface CustomNodeData {
-  title: string;
   description: string;
-  status: 'configured' | 'not_configured';
-  type: 'transfer' | 'swap' | 'strategy' | 'condition' | 'stake' | 'notification' | 'merge' | 'split';
-  prompt?: string;
-  onClick?: () => void;
+  configFields?: Array<{
+    name: string;
+    type: 'text' | 'number' | 'select' | 'textarea';
+    label: string;
+    placeholder?: string;
+    options?: string[];
+    required?: boolean;
+  }>;
 }
 
-// Custom Node Component
-const CustomNode = ({ data }: { data: CustomNodeData }) => {
-  const getNodeColor = (type: string) => {
-    switch (type) {
-      case 'transfer': return 'border-blue-500 bg-blue-50';
-      case 'swap': return 'border-purple-500 bg-purple-50';
-      case 'strategy': return 'border-green-500 bg-green-50';
-      case 'condition': return 'border-pink-500 bg-pink-50';
-      case 'stake': return 'border-red-500 bg-red-50';
-      case 'notification': return 'border-orange-500 bg-orange-50';
-      case 'merge': return 'border-indigo-500 bg-indigo-50';
-      case 'split': return 'border-yellow-500 bg-yellow-50';
-      default: return 'border-gray-300 bg-gray-50';
+const EVENTS: ActionType[] = [
+  {
+    id: 'price_change',
+    name: 'Price Change',
+    icon: TrendingUp,
+    color: 'text-blue-600',
+    bgColor: 'bg-blue-50 border-blue-200',
+    description: 'Trigger when token price changes by specified amount',
+    configFields: [
+      { name: 'token', type: 'select', label: 'Token', options: ['SEI', 'USDC', 'WSEI'], required: true },
+      { name: 'change_type', type: 'select', label: 'Change Type', options: ['Increase', 'Decrease', 'Any'], required: true },
+      { name: 'percentage', type: 'number', label: 'Percentage (%)', placeholder: '5', required: true }
+    ]
+  },
+  {
+    id: 'wallet_balance',
+    name: 'Balance Threshold',
+    icon: Wallet,
+    color: 'text-green-600',
+    bgColor: 'bg-green-50 border-green-200',
+    description: 'Trigger when wallet balance reaches threshold',
+    configFields: [
+      { name: 'token', type: 'select', label: 'Token', options: ['SEI', 'USDC', 'WSEI'], required: true },
+      { name: 'threshold_type', type: 'select', label: 'Condition', options: ['Above', 'Below'], required: true },
+      { name: 'amount', type: 'number', label: 'Amount', placeholder: '100', required: true }
+    ]
+  },
+  {
+    id: 'time_schedule',
+    name: 'Time Schedule',
+    icon: Calendar,
+    color: 'text-purple-600',
+    bgColor: 'bg-purple-50 border-purple-200',
+    description: 'Trigger at scheduled time intervals',
+    configFields: [
+      { name: 'frequency', type: 'select', label: 'Frequency', options: ['Daily', 'Weekly', 'Monthly'], required: true },
+      { name: 'time', type: 'text', label: 'Time (HH:MM)', placeholder: '09:00', required: true }
+    ]
+  },
+  {
+    id: 'market_condition',
+    name: 'Market Condition',
+    icon: BarChart3,
+    color: 'text-orange-600',
+    bgColor: 'bg-orange-50 border-orange-200',
+    description: 'Trigger based on market conditions',
+    configFields: [
+      { name: 'condition', type: 'select', label: 'Condition', options: ['Bull Market', 'Bear Market', 'High Volatility'], required: true },
+      { name: 'duration', type: 'select', label: 'Duration', options: ['1 hour', '6 hours', '24 hours'], required: true }
+    ]
+  }
+];
+
+const ACTIONS: ActionType[] = [
+  {
+    id: 'transfer',
+    name: 'Transfer Tokens',
+    icon: ArrowUpRight,
+    color: 'text-blue-600',
+    bgColor: 'bg-blue-50 border-blue-200',
+    description: 'Send tokens to another address',
+    configFields: [
+      { name: 'token', type: 'select', label: 'Token', options: ['SEI', 'USDC', 'WSEI'], required: true },
+      { name: 'amount', type: 'number', label: 'Amount', placeholder: '100', required: true },
+      { name: 'recipient', type: 'text', label: 'Recipient Address', placeholder: '0x...', required: true }
+    ]
+  },
+  {
+    id: 'swap',
+    name: 'Swap Tokens',
+    icon: ArrowRight,
+    color: 'text-purple-600',
+    bgColor: 'bg-purple-50 border-purple-200',
+    description: 'Exchange one token for another',
+    configFields: [
+      { name: 'from_token', type: 'select', label: 'From Token', options: ['SEI', 'USDC', 'WSEI'], required: true },
+      { name: 'to_token', type: 'select', label: 'To Token', options: ['SEI', 'USDC', 'WSEI'], required: true },
+      { name: 'amount', type: 'number', label: 'Amount', placeholder: '100', required: true }
+    ]
+  },
+  {
+    id: 'stake',
+    name: 'Stake Tokens',
+    icon: Coins,
+    color: 'text-green-600',
+    bgColor: 'bg-green-50 border-green-200',
+    description: 'Stake tokens for rewards',
+    configFields: [
+      { name: 'token', type: 'select', label: 'Token', options: ['SEI'], required: true },
+      { name: 'amount', type: 'number', label: 'Amount', placeholder: '1000', required: true },
+      { name: 'validator', type: 'text', label: 'Validator (optional)', placeholder: 'Auto-select best validator' }
+    ]
+  },
+  {
+    id: 'notification',
+    name: 'Send Notification',
+    icon: MessageSquare,
+    color: 'text-orange-600',
+    bgColor: 'bg-orange-50 border-orange-200',
+    description: 'Send email or push notification',
+    configFields: [
+      { name: 'type', type: 'select', label: 'Type', options: ['Email', 'Push', 'Both'], required: true },
+      { name: 'message', type: 'textarea', label: 'Message', placeholder: 'Your custom message...', required: true }
+    ]
+  },
+  {
+    id: 'strategy',
+    name: 'Trading Strategy',
+    icon: Target,
+    color: 'text-red-600',
+    bgColor: 'bg-red-50 border-red-200',
+    description: 'Execute complex trading strategy',
+    configFields: [
+      { name: 'strategy_type', type: 'select', label: 'Strategy', options: ['DCA', 'Grid Trading', 'Momentum'], required: true },
+      { name: 'budget', type: 'number', label: 'Budget (SEI)', placeholder: '1000', required: true },
+      { name: 'duration', type: 'select', label: 'Duration', options: ['1 week', '1 month', '3 months'], required: true }
+    ]
+  }
+];
+
+// Custom Node Component with enhanced styling
+const PipelineNode = ({ data }: { data: any }) => {
+  const isEvent = data.category === 'event';
+  const getNodeColor = () => {
+    if (isEvent) {
+      return 'border-orange-300 bg-gradient-to-br from-orange-50 to-red-50';
     }
+    return 'border-blue-300 bg-gradient-to-br from-blue-50 to-purple-50';
   };
 
-  const isCondition = data.type === 'condition';
-  const isSplit = data.type === 'split';
-
   return (
-    <div className={`w-80 p-4 rounded-lg border-2 ${getNodeColor(data.type)} shadow-md cursor-pointer hover:shadow-lg transition-shadow relative`}
-         onClick={() => data.onClick && data.onClick()}>
-      
-      {/* Multiple Input Handles for Merge nodes */}
-      {data.type === 'merge' && (
-        <>
-          <Handle
-            type="target"
-            position={Position.Top}
-            id="input-1"
-            style={{ left: '25%', background: '#10b981', width: '12px', height: '12px' }}
-          />
-          <Handle
-            type="target"
-            position={Position.Top}
-            id="input-2"
-            style={{ left: '75%', background: '#10b981', width: '12px', height: '12px' }}
-          />
-        </>
-      )}
-
-      {/* Single Input Handle for other nodes */}
-      {data.type !== 'merge' && (
+    <div className={`w-64 p-4 rounded-xl border-2 ${getNodeColor()} shadow-lg cursor-pointer hover:shadow-xl transition-all duration-200 relative`}>
+      {!isEvent && (
         <Handle
           type="target"
           position={Position.Top}
-          style={{ background: '#10b981', width: '12px', height: '12px' }}
+          style={{ background: '#f97316', width: '16px', height: '16px', border: '2px solid white' }}
         />
       )}
 
-      <div className="mb-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">{data.title}</h3>
-            <p className="text-sm text-gray-600">{data.description}</p>
-          </div>
-          <Edit className="w-4 h-4 text-gray-400" />
+      <div className="flex items-start gap-3 mb-3">
+        <div className={`p-2 rounded-lg ${isEvent ? 'bg-orange-100' : 'bg-blue-100'}`}>
+          <data.icon className={`w-5 h-5 ${isEvent ? 'text-orange-600' : 'text-blue-600'}`} />
         </div>
-        {data.prompt && (
-          <p className="text-xs text-gray-500 mt-2 bg-white p-2 rounded">
-            Prompt: {data.prompt.substring(0, 50)}...
-          </p>
-        )}
+        <div className="flex-1">
+          <h3 className="text-sm font-semibold text-gray-900">{data.name}</h3>
+          <p className="text-xs text-gray-600 mt-1">{data.description}</p>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-6 h-6 p-0 text-gray-400 hover:text-red-500"
+          onClick={(e) => {
+            e.stopPropagation();
+            data.onDelete && data.onDelete();
+          }}
+        >
+          <X className="w-3 h-3" />
+        </Button>
       </div>
       
-      <div className="flex items-center justify-center mb-2">
-        <span className={`text-sm font-medium px-3 py-1 rounded-full ${
-          data.status === 'configured' 
-            ? 'bg-green-100 text-green-700' 
-            : 'bg-orange-100 text-orange-700'
-        }`}>
-          {data.status === 'configured' ? 'Configured' : 'Not configured'}
-        </span>
-      </div>
+      <Badge 
+        variant="secondary" 
+        className={`text-xs ${data.configured ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}
+      >
+        {data.configured ? '✓ Configured' : '⚠ Needs Config'}
+      </Badge>
 
-      {/* Conditional Output Handles (True/False) */}
-      {isCondition && (
-        <>
-          <Handle
-            type="source"
-            position={Position.Bottom}
-            id="true"
-            style={{ left: '33%', background: '#10b981', width: '12px', height: '12px' }}
-          />
-          <Handle
-            type="source"
-            position={Position.Bottom}
-            id="false"
-            style={{ left: '67%', background: '#ef4444', width: '12px', height: '12px' }}
-          />
-          <div className="flex justify-between text-xs text-gray-500 mt-1">
-            <span>True</span>
-            <span>False</span>
-          </div>
-        </>
-      )}
-
-      {/* Split Output Handles (Multiple outputs) */}
-      {isSplit && (
-        <>
-          <Handle
-            type="source"
-            position={Position.Bottom}
-            id="output-1"
-            style={{ left: '25%', background: '#3b82f6', width: '12px', height: '12px' }}
-          />
-          <Handle
-            type="source"
-            position={Position.Bottom}
-            id="output-2"
-            style={{ left: '50%', background: '#3b82f6', width: '12px', height: '12px' }}
-          />
-          <Handle
-            type="source"
-            position={Position.Bottom}
-            id="output-3"
-            style={{ left: '75%', background: '#3b82f6', width: '12px', height: '12px' }}
-          />
-        </>
-      )}
-
-      {/* Single Output Handle for other nodes */}
-      {!isCondition && !isSplit && (
-        <Handle
-          type="source"
-          position={Position.Bottom}
-          style={{ background: '#3b82f6', width: '12px', height: '12px' }}
-        />
-      )}
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        style={{ background: '#f97316', width: '16px', height: '16px', border: '2px solid white' }}
+      />
     </div>
   );
 };
 
 const nodeTypes = {
-  customNode: CustomNode,
+  pipelineNode: PipelineNode,
 };
 
-const initialNodes: Node[] = [];
-const initialEdges: Edge[] = [];
-
 export default function WalletPipelinePage() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [prompt, setPrompt] = useState('');
-  const [nodeCounter, setNodeCounter] = useState(1);
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [selectedEvents, setSelectedEvents] = useState<PipelineStep[]>([]);
+  const [selectedActions, setSelectedActions] = useState<PipelineStep[]>([]);
+  const [configDialogOpen, setConfigDialogOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<ActionType | null>(null);
+  const [itemConfig, setItemConfig] = useState<any>({});
+  const [editingStep, setEditingStep] = useState<PipelineStep | null>(null);
+  const [pipelineName, setPipelineName] = useState('');
 
-  const openNodeModal = useCallback((node: Node) => {
-    setSelectedNode(node);
-    setPrompt(node.data?.prompt || '');
-    setShowModal(true);
-    console.log('🔧 Opening configuration for:', node.data.title);
-  }, []);
+  const onConnect = useCallback(
+    (params: Connection) => setEdges((els) => addEdge(params, els)),
+    [setEdges]
+  );
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const addEvent = (item: ActionType) => {
+    // Open configuration dialog for the event
+    setSelectedItem(item);
+    setEditingStep({
+      id: `${item.id}_${Date.now()}`,
+      type: 'event',
+      category: 'event',
+      name: item.name,
+      icon: item.icon,
+      description: item.description,
+      position: { x: Math.random() * 500, y: Math.random() * 300 }
+    });
+    setItemConfig({});
+    setConfigDialogOpen(true);
+  };
 
-  const actionTypes: ActionType[] = [
-    { id: 'transfer', name: 'Transfer', icon: ArrowRight, color: 'text-blue-600', bgColor: 'bg-blue-100' },
-    { id: 'swap', name: 'Swap', icon: Repeat, color: 'text-purple-600', bgColor: 'bg-purple-100' },
-    { id: 'strategy', name: 'Strategy', icon: Target, color: 'text-green-600', bgColor: 'bg-green-100' },
-    { id: 'condition', name: 'Condition', icon: Shield, color: 'text-pink-600', bgColor: 'bg-pink-100' },
-    { id: 'stake', name: 'Stake', icon: Coins, color: 'text-red-600', bgColor: 'bg-red-100' },
-    { id: 'notification', name: 'Email', icon: Mail, color: 'text-orange-600', bgColor: 'bg-orange-100' },
-    { id: 'merge', name: 'Merge', icon: GitMerge, color: 'text-indigo-600', bgColor: 'bg-indigo-100' },
-    { id: 'split', name: 'Split', icon: GitBranch, color: 'text-yellow-600', bgColor: 'bg-yellow-100' }
-  ];
+  const addActionToFlow = (item: ActionType) => {
+    // Open configuration dialog for the action
+    setSelectedItem(item);
+    setEditingStep({
+      id: `${item.id}_${Date.now()}`,
+      type: 'action',
+      category: 'action',
+      name: item.name,
+      icon: item.icon,
+      description: item.description,
+      position: { x: Math.random() * 600, y: Math.random() * 400 }
+    });
+    setItemConfig({});
+    setConfigDialogOpen(true);
+  };
 
-  const onConnect = useCallback((params: Connection) => {
-    console.log('🔗 Connection created:', params);
-    setEdges((eds) => addEdge(params, eds));
-  }, [setEdges]);
+  const deleteEvent = (id: string) => {
+    setSelectedEvents(selectedEvents.filter(item => item.id !== id));
+  };
 
-  const saveNodePrompt = useCallback(() => {
-    if (selectedNode) {
-      setNodes((nds) => 
-        nds.map((node) => 
-          node.id === selectedNode.id 
-            ? { 
-                ...node, 
-                data: { 
-                  ...node.data, 
-                  prompt, 
-                  status: 'configured' 
-                } 
-              }
-            : node
-        )
-      );
-      console.log(`💾 Saved prompt for ${selectedNode.data.title}:`, prompt);
-      setShowModal(false);
-      setSelectedNode(null);
-      setPrompt('');
-    }
-  }, [selectedNode, prompt, setNodes]);
+  const deleteAction = (id: string) => {
+    setSelectedActions(selectedActions.filter(item => item.id !== id));
+    setNodes(nodes.filter(node => node.id !== id));
+  };
 
-  const addNewStep = useCallback((actionType: string) => {
-    const newNodeId = `node-${nodeCounter}`;
-    const actionTypeData = actionTypes.find(type => type.id === actionType);
+  const openConfigDialog = (step: PipelineStep) => {
+    const itemType = step.type === 'event' ? 
+      EVENTS.find(e => e.name === step.name) :
+      ACTIONS.find(a => a.name === step.name);
     
-    console.log(`🆕 Adding new ${actionType} node:`, {
-      id: newNodeId,
-      type: actionType,
-      timestamp: new Date().toISOString()
-    });
+    setSelectedItem(itemType || null);
+    setEditingStep(step);
+    setItemConfig(step.config || {});
+    setConfigDialogOpen(true);
+  };
 
-    const newNode: Node = {
-      id: newNodeId,
-      type: 'customNode',
-      position: { x: Math.random() * 400 + 100, y: Math.random() * 400 + 100 },
-      data: {
-        title: `${actionTypeData?.name || actionType} ${nodeCounter}`,
-        description: `Configure ${actionType} action`,
-        status: 'not_configured',
-        type: actionType as any,
-        onClick: () => openNodeModal(newNode)
+  const saveConfig = () => {
+    if (!editingStep) return;
+    
+    if (editingStep.type === 'event') {
+      const configuredEvent = { ...editingStep, config: itemConfig };
+      // Check if editing existing or adding new
+      const existingIndex = selectedEvents.findIndex(item => item.id === editingStep.id);
+      if (existingIndex >= 0) {
+        // Update existing event
+        const updatedEvents = [...selectedEvents];
+        updatedEvents[existingIndex] = configuredEvent;
+        setSelectedEvents(updatedEvents);
+      } else {
+        // Add new event
+        setSelectedEvents([...selectedEvents, configuredEvent]);
       }
-    };
-
-    setNodes((nds) => {
-      const updatedNodes = nds.concat(newNode);
-      // Update the onClick for the new node after it's been added
-      setTimeout(() => {
-        setNodes((currentNodes) => 
-          currentNodes.map((node) => 
-            node.id === newNodeId 
-              ? { ...node, data: { ...node.data, onClick: () => openNodeModal(node) } }
-              : node
-          )
+    } else {
+      const configuredAction = { ...editingStep, config: itemConfig };
+      const existingIndex = selectedActions.findIndex(item => item.id === editingStep.id);
+      
+      if (existingIndex >= 0) {
+        // Update existing action
+        const updatedActions = [...selectedActions];
+        updatedActions[existingIndex] = configuredAction;
+        setSelectedActions(updatedActions);
+        
+        // Update node in React Flow
+        const updatedNodes = nodes.map(node => 
+          node.id === editingStep.id ? { 
+            ...node, 
+            data: { ...node.data, configured: true, config: itemConfig } 
+          } : node
         );
-      }, 0);
-      return updatedNodes;
-    });
-    setNodeCounter(nodeCounter + 1);
+        setNodes(updatedNodes);
+      } else {
+        // Add new action
+        setSelectedActions([...selectedActions, configuredAction]);
+        
+        // Add to React Flow nodes
+        const newNode = {
+          id: configuredAction.id,
+          type: 'pipelineNode',
+          position: configuredAction.position,
+          data: {
+            ...configuredAction,
+            configured: true,
+            onDelete: () => deleteAction(configuredAction.id),
+            onClick: () => openConfigDialog(configuredAction)
+          }
+        };
+        setNodes([...nodes, newNode]);
+      }
+    }
+    
+    setConfigDialogOpen(false);
+    setEditingStep(null);
+    setItemConfig({});
+  };
 
-    console.log('📊 Current pipeline state:', {
-      totalNodes: nodes.length + 1,
-      totalEdges: edges.length,
-      newNodeAdded: newNode
-    });
-  }, [nodeCounter, nodes.length, edges.length, actionTypes, setNodes, openNodeModal]);
+  const goToNextStep = () => {
+    setCurrentStep(2);
+  };
 
-  const steps = [
-    { number: 1, title: 'Pipeline', active: currentStep === 1 },
-    { number: 2, title: 'Configuration', active: currentStep === 2 },
-    { number: 3, title: 'Conditions', active: currentStep === 3 },
-    { number: 4, title: 'Review', active: currentStep === 4 }
-  ];
+  const confirmPipeline = async () => {
+    const pipeline = {
+      id: Date.now(),
+      name: pipelineName || 'Untitled Pipeline',
+      created: new Date().toISOString(),
+      userId: user?.id,
+      status: 'active',
+      events: selectedEvents.map(item => ({
+        id: item.id,
+        name: item.name,
+        type: item.name.toLowerCase().replace(' ', '_'),
+        description: item.description,
+        config: item.config || {}
+      })),
+      actions: selectedActions.map(item => ({
+        id: item.id,
+        name: item.name,
+        type: item.name.toLowerCase().replace(' ', '_'),
+        description: item.description,
+        config: item.config || {},
+        position: item.position
+      })),
+      connections: edges.map(edge => ({
+        from: edge.source,
+        to: edge.target,
+        type: edge.type || 'default'
+      }))
+    };
+    
+    try {
+      // For testing: authentication is bypassed
+      console.log('Creating pipeline (auth bypassed for testing)');
 
-  return (
-    <div className="flex h-screen bg-gray-100">
-      {/* Floating Sidebar Toggle Button (when collapsed) */}
-      {sidebarCollapsed && (
-        <button
-          onClick={() => setSidebarCollapsed(false)}
-          className="fixed top-4 left-4 z-50 p-3 bg-slate-800 text-white rounded-lg shadow-lg hover:bg-slate-700 transition-colors"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
-      )}
+      // Save pipeline to database
+      const response = await fetch('/api/pipelines', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+          // No auth headers for testing
+        },
+        body: JSON.stringify(pipeline),
+      });
 
-      {/* Sidebar */}
-      <div className={`${sidebarCollapsed ? 'w-16' : 'w-80'} bg-slate-800 text-white flex flex-col transition-all duration-300`}>
-        {/* Logo */}
-        <div className="flex items-center p-6 border-b border-slate-700">
-          <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center mr-3">
-            <Wallet className="w-6 h-6" />
-          </div>
-          {!sidebarCollapsed && <h1 className="text-xl font-bold">CryptoVault</h1>}
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="ml-auto p-2 rounded hover:bg-slate-700 transition-colors"
-          >
-            {sidebarCollapsed ? <Menu className="w-5 h-5" /> : <X className="w-5 h-5" />}
-          </button>
-        </div>
+      if (response.ok) {
+        const result = await response.json();
+        const savedPipeline = result.data;
+        console.log('Pipeline saved successfully:', savedPipeline);
+        
+        // Create agenda job for pipeline execution
+        await fetch('/api/pipelines/schedule', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+            // No auth headers for testing
+          },
+          body: JSON.stringify({
+            pipelineId: savedPipeline._id,
+            pipeline: savedPipeline
+          }),
+        });
 
-        {/* Navigation */}
-        <nav className="flex-1 px-4 py-6">
-          <div className="space-y-1">
-            <Link href="/dashboard" className={`flex items-center ${sidebarCollapsed ? 'px-3 py-3 justify-center' : 'px-4 py-3'} rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-colors`}>
-              <Home className={`${sidebarCollapsed ? 'w-7 h-7' : 'w-5 h-5'} ${sidebarCollapsed ? '' : 'mr-3'}`} />
-              {!sidebarCollapsed && 'Dashboard'}
-            </Link>
-            
-            <Link href="/wallet" className={`flex items-center ${sidebarCollapsed ? 'px-3 py-3 justify-center' : 'px-4 py-3'} rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-colors`}>
-              <Wallet className={`${sidebarCollapsed ? 'w-7 h-7' : 'w-5 h-5'} ${sidebarCollapsed ? '' : 'mr-3'}`} />
-              {!sidebarCollapsed && 'Wallet'}
-            </Link>
-            
-            <Link href="/trading" className={`flex items-center ${sidebarCollapsed ? 'px-3 py-3 justify-center' : 'px-4 py-3'} rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-colors`}>
-              <TrendingUp className={`${sidebarCollapsed ? 'w-7 h-7' : 'w-5 h-5'} ${sidebarCollapsed ? '' : 'mr-3'}`} />
-              {!sidebarCollapsed && 'Trading'}
-            </Link>
-            
-            <Link href="/cards" className={`flex items-center ${sidebarCollapsed ? 'px-3 py-3 justify-center' : 'px-4 py-3'} rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-colors`}>
-              <CreditCard className={`${sidebarCollapsed ? 'w-7 h-7' : 'w-5 h-5'} ${sidebarCollapsed ? '' : 'mr-3'}`} />
-              {!sidebarCollapsed && 'Cards'}
-            </Link>
-            
-            <Link href="/analytics" className={`flex items-center ${sidebarCollapsed ? 'px-3 py-3 justify-center' : 'px-4 py-3'} rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-colors`}>
-              <BarChart3 className={`${sidebarCollapsed ? 'w-7 h-7' : 'w-5 h-5'} ${sidebarCollapsed ? '' : 'mr-3'}`} />
-              {!sidebarCollapsed && 'Analytics'}
-            </Link>
-            
-            <Link href="/activity" className={`flex items-center ${sidebarCollapsed ? 'px-3 py-3 justify-center' : 'px-4 py-3'} rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-colors`}>
-              <Activity className={`${sidebarCollapsed ? 'w-7 h-7' : 'w-5 h-5'} ${sidebarCollapsed ? '' : 'mr-3'}`} />
-              {!sidebarCollapsed && 'Activity'}
-            </Link>
-            
-            <Link href="/agents" className={`flex items-center ${sidebarCollapsed ? 'px-3 py-3 justify-center' : 'px-4 py-3'} rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-colors`}>
-              <Bot className={`${sidebarCollapsed ? 'w-7 h-7' : 'w-5 h-5'} ${sidebarCollapsed ? '' : 'mr-3'}`} />
-              {!sidebarCollapsed && 'Agents'}
-              {!sidebarCollapsed && <span className="ml-auto bg-slate-600 text-xs px-2 py-1 rounded">0</span>}
-            </Link>
+        alert('Pipeline confirmed and scheduled successfully!');
+        
+        // Reset form
+        setSelectedEvents([]);
+        setSelectedActions([]);
+        setNodes([]);
+        setEdges([]);
+        setPipelineName('');
+        setCurrentStep(1);
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to save pipeline');
+      }
+    } catch (error) {
+      console.error('Error saving pipeline:', error);
+      alert(`Error saving pipeline: ${error.message}`);
+    }
+  };
 
-            <Link href="/pipeline" className={`flex items-center ${sidebarCollapsed ? 'px-3 py-3 justify-center' : 'px-4 py-3'} rounded-lg bg-blue-600 text-white transition-colors`}>
-              <Zap className={`${sidebarCollapsed ? 'w-7 h-7' : 'w-5 h-5'} ${sidebarCollapsed ? '' : 'mr-3'}`} />
-              {!sidebarCollapsed && 'Pipeline'}
-            </Link>
-            
-            <Link href="/profile" className={`flex items-center ${sidebarCollapsed ? 'px-3 py-3 justify-center' : 'px-4 py-3'} rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-colors`}>
-              <User className={`${sidebarCollapsed ? 'w-7 h-7' : 'w-5 h-5'} ${sidebarCollapsed ? '' : 'mr-3'}`} />
-              {!sidebarCollapsed && 'Profile'}
-            </Link>
-            
-            <Link href="/settings" className={`flex items-center ${sidebarCollapsed ? 'px-3 py-3 justify-center' : 'px-4 py-3'} rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-colors`}>
-              <Settings className={`${sidebarCollapsed ? 'w-7 h-7' : 'w-5 h-5'} ${sidebarCollapsed ? '' : 'mr-3'}`} />
-              {!sidebarCollapsed && 'Settings'}
-            </Link>
-          </div>
-        </nav>
-
-        {/* User Profile */}
-        <div className="p-4 border-t border-slate-700">
-          <div className="flex items-center">
-            <div className="w-10 h-10 bg-teal-500 rounded-full flex items-center justify-center mr-3">
-              <span className="text-sm font-medium">{user?.name?.charAt(0) || 'J'}</span>
+  const renderStepContent = () => {
+    switch (currentStep) {
+      case 1:
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Choose Your Events</h2>
+              <p className="text-gray-600">Select triggers that will start your pipeline</p>
             </div>
-            {!sidebarCollapsed && (
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{user?.name || 'John Doe'}</p>
-                <p className="text-xs text-slate-400 truncate">{user?.email || 'john@example.com'}</p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
+              {EVENTS.map((event) => (
+                <Card 
+                  key={event.id} 
+                  className={`cursor-pointer hover:shadow-lg transition-all duration-200 ${event.bgColor} border-2`}
+                  onClick={() => addEvent(event)}
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-white">
+                        <event.icon className={`w-5 h-5 ${event.color}`} />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">{event.name}</CardTitle>
+                        <CardDescription className="text-sm">{event.description}</CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                </Card>
+              ))}
+            </div>
+
+            {selectedEvents.length > 0 && (
+              <div className="mt-8">
+                <h3 className="text-lg font-semibold mb-4">Selected Events ({selectedEvents.length})</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {selectedEvents.map((item) => (
+                    <Card key={item.id} className="border-orange-200 bg-orange-50">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <item.icon className="w-5 h-5 text-orange-600" />
+                            <span className="font-medium">{item.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge className={`text-xs ${item.config ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                              {item.config ? '✓ Configured' : '⚠ Needs Config'}
+                            </Badge>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 text-red-500 hover:bg-red-50"
+                              onClick={() => deleteEvent(item.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        {item.config && (
+                          <div className="text-xs text-gray-600 mt-2">
+                            {Object.entries(item.config).map(([key, value]) => (
+                              <div key={key} className="flex gap-2">
+                                <span className="font-medium capitalize">{key.replace('_', ' ')}:</span>
+                                <span>{String(value)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openConfigDialog(item)}
+                            className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                          >
+                            <Edit className="w-3 h-3 mr-1" />
+                            {item.config ? 'Edit Config' : 'Configure'}
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               </div>
             )}
+          </div>
+        );
+
+      case 2:
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Build Your Pipeline</h2>
+              <p className="text-gray-600">Drag actions from the menu and connect your workflow</p>
+            </div>
+
+            <div className="mb-4">
+              <Label htmlFor="pipeline-name" className="text-sm font-medium">Pipeline Name</Label>
+              <Input
+                id="pipeline-name"
+                value={pipelineName}
+                onChange={(e) => setPipelineName(e.target.value)}
+                placeholder="Enter pipeline name..."
+                className="mt-1 max-w-md"
+              />
+            </div>
+            
+            <div className="grid grid-cols-5 gap-6">
+              {/* React Flow - Takes 4/5 of the width */}
+              <div className="col-span-4">
+                <div className="h-[700px] border-2 border-gray-200 rounded-xl bg-gray-50 shadow-inner">
+                  <ReactFlow
+                    nodes={nodes}
+                    edges={edges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onConnect={onConnect}
+                    nodeTypes={nodeTypes}
+                    fitView
+                    className="rounded-xl"
+                  >
+                    <Background variant={BackgroundVariant.Dots} />
+                    <Controls />
+                    <MiniMap />
+                  </ReactFlow>
+                </div>
+              </div>
+
+              {/* Actions Menu - Takes 1/5 of the width */}
+              <div className="col-span-1">
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold mb-3 text-orange-800">Selected Events</h3>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {selectedEvents.map((item) => (
+                        <div key={item.id} className="flex items-center gap-2 p-2 bg-orange-50 rounded border border-orange-200 text-xs">
+                          <item.icon className="w-4 h-4 text-orange-600 flex-shrink-0" />
+                          <span className="flex-1 font-medium truncate">{item.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-lg font-semibold mb-3 text-blue-800">Add Actions</h3>
+                    <div className="space-y-2">
+                      {ACTIONS.map((action) => (
+                        <Card 
+                          key={action.id} 
+                          className={`cursor-pointer hover:shadow-md transition-all duration-200 ${action.bgColor} border-2 p-3`}
+                          onClick={() => addActionToFlow(action)}
+                        >
+                          <div className="flex items-center gap-2">
+                            <div className="p-1 rounded bg-white">
+                              <action.icon className={`w-4 h-4 ${action.color}`} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium truncate">{action.name}</div>
+                              <div className="text-xs text-gray-600 truncate">{action.description}</div>
+                            </div>
+                            <Plus className="w-4 h-4 text-gray-400" />
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+
+                  {selectedActions.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-semibold mb-2 text-gray-700">Pipeline Actions</h4>
+                      <div className="space-y-1 max-h-40 overflow-y-auto">
+                        {selectedActions.map((item) => (
+                          <div key={item.id} className="flex items-center gap-2 p-2 bg-blue-50 rounded border border-blue-200 text-xs">
+                            <item.icon className="w-3 h-3 text-blue-600 flex-shrink-0" />
+                            <span className="flex-1 font-medium truncate">{item.name}</span>
+                            <Badge className={`text-xs px-1 ${item.config ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                              {item.config ? '✓' : '!'}
+                            </Badge>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-4 w-4 p-0 text-red-500 hover:bg-red-50"
+                              onClick={() => deleteAction(item.id)}
+                            >
+                              <X className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {(selectedEvents.length > 0 && selectedActions.length > 0) && (
+                    <div className="pt-4 border-t">
+                      <Button 
+                        onClick={confirmPipeline}
+                        className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600"
+                        size="sm"
+                      >
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        Confirm Pipeline
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="text-center text-sm text-gray-600">
+              <p>Click nodes to configure them, drag from handles to connect actions</p>
+            </div>
+          </div>
+        );
+
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50">
+      {/* Header */}
+      <div className="bg-white/80 backdrop-blur-xl border-b border-orange-200/50 shadow-lg">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <img 
+                src="/mariposa-logo.png" 
+                alt="Mariposa" 
+                className="w-10 h-10"
+              />
+              <div>
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 via-orange-600 to-red-600 bg-clip-text text-transparent">
+                  Pipeline Builder
+                </h1>
+                <p className="text-gray-600">Create automated crypto workflows</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header with Steps */}
-        <header className="bg-white border-b border-gray-200 px-6 py-4">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Wallet Pipeline Builder</h1>
-              <p className="text-gray-600">Create automated workflows for your crypto operations</p>
+      {/* Step Indicator */}
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        <div className="flex items-center justify-center mb-8">
+          {[
+            { step: 1, title: 'Events', icon: Zap },
+            { step: 2, title: 'Actions & Flow', icon: Settings }
+          ].map((item, index) => (
+            <div key={item.step} className="flex items-center">
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+                currentStep >= item.step 
+                  ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white' 
+                  : 'bg-gray-100 text-gray-500'
+              }`}>
+                <item.icon className="w-4 h-4" />
+                <span className="font-medium">{item.title}</span>
+              </div>
+              {index < 1 && (
+                <ChevronRight className={`mx-2 w-4 h-4 ${
+                  currentStep > item.step ? 'text-orange-500' : 'text-gray-400'
+                }`} />
+              )}
             </div>
-          </div>
+          ))}
+        </div>
 
-          {/* Progress Steps */}
-          <div className="flex items-center justify-center space-x-8 mb-4">
-            {steps.map((step, index) => (
-              <div key={step.number} className="flex items-center">
-                <div className="flex flex-col items-center">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium ${
-                    step.active ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-600'
-                  }`}>
-                    {step.number}
-                  </div>
-                  <span className={`mt-2 text-sm ${step.active ? 'text-green-600 font-medium' : 'text-gray-500'}`}>
-                    {step.title}
-                  </span>
-                </div>
-                {index < steps.length - 1 && (
-                  <div className="w-20 h-px bg-gray-300 mx-4 mt-[-20px]"></div>
+        {/* Main Content */}
+        <Card className="bg-white/80 backdrop-blur-sm border-orange-200/50 shadow-xl">
+          <CardContent className="p-8">
+            {renderStepContent()}
+          </CardContent>
+        </Card>
+
+        {/* Navigation */}
+        <div className="flex justify-between mt-8">
+          {currentStep > 1 && (
+            <Button 
+              variant="outline" 
+              onClick={() => setCurrentStep(1)}
+              className="border-orange-200 text-orange-700 hover:bg-orange-50"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Events
+            </Button>
+          )}
+          
+          {currentStep < 2 && (
+            <Button 
+              onClick={goToNextStep}
+              className="ml-auto bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600"
+              disabled={selectedEvents.length === 0}
+            >
+              Build Pipeline
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Configuration Dialog */}
+      <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedItem?.icon && <selectedItem.icon className="w-5 h-5 text-orange-600" />}
+              Configure {selectedItem?.name}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedItem?.description}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid gap-4 py-4">
+            {selectedItem?.configFields?.map((field) => (
+              <div key={field.name} className="grid gap-2">
+                <Label htmlFor={field.name}>
+                  {field.label} {field.required && <span className="text-red-500">*</span>}
+                </Label>
+                {field.type === 'select' ? (
+                  <Select
+                    value={itemConfig[field.name] || ''}
+                    onValueChange={(value) => setItemConfig({...itemConfig, [field.name]: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={`Select ${field.label}`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {field.options?.map((option) => (
+                        <SelectItem key={option} value={option}>{option}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : field.type === 'textarea' ? (
+                  <Textarea
+                    id={field.name}
+                    placeholder={field.placeholder}
+                    value={itemConfig[field.name] || ''}
+                    onChange={(e) => setItemConfig({...itemConfig, [field.name]: e.target.value})}
+                  />
+                ) : (
+                  <Input
+                    id={field.name}
+                    type={field.type}
+                    placeholder={field.placeholder}
+                    value={itemConfig[field.name] || ''}
+                    onChange={(e) => setItemConfig({...itemConfig, [field.name]: e.target.value})}
+                  />
                 )}
               </div>
             ))}
           </div>
-        </header>
-
-        {/* Content */}
-        <main className="flex-1 overflow-hidden flex">
-          {/* Action Types Sidebar */}
-          <div className="w-48 bg-white border-r border-gray-200 p-4">
-            <h3 className="text-sm font-medium text-gray-900 mb-4">Actions</h3>
-            <div className="space-y-2">
-              {actionTypes.map((actionType) => {
-                const IconComponent = actionType.icon;
-                return (
-                  <button
-                    key={actionType.id}
-                    onClick={() => addNewStep(actionType.id)}
-                    className={`w-full flex flex-col items-center p-3 rounded-lg border-2 border-dashed border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-colors`}
-                  >
-                    <div className={`w-8 h-8 ${actionType.bgColor} rounded-lg flex items-center justify-center mb-2`}>
-                      <IconComponent className={`w-5 h-5 ${actionType.color}`} />
-                    </div>
-                    <span className="text-xs font-medium text-gray-700">{actionType.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Console Log Button */}
-            <div className="mt-6 p-3 bg-blue-50 rounded-lg">
-              <p className="text-xs text-blue-700 mb-2">Check console for logs</p>
-              <div className="text-xs text-gray-600">
-                <div>Nodes: {nodes.length}</div>
-                <div>Edges: {edges.length}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* React Flow Canvas */}
-          <div className="flex-1 relative">
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              nodeTypes={nodeTypes}
-              fitView
-            >
-              <Controls />
-              <MiniMap />
-              <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
-            </ReactFlow>
-          </div>
-        </main>
-
-        {/* Footer Actions */}
-        <footer className="bg-white border-t border-gray-200 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <Button variant="outline" className="text-green-500 border-green-500 hover:bg-green-50">
-              SAVE
+          
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setConfigDialogOpen(false)}>
+              Cancel
             </Button>
-            
-            <div className="flex items-center space-x-4">
-              <Button variant="outline" className="text-green-500 border-green-500 hover:bg-green-50">
-                PREVIEW PIPELINE
-              </Button>
-              <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-                NEXT
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </div>
+            <Button 
+              onClick={saveConfig}
+              className="bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600"
+            >
+              Save Configuration
+            </Button>
           </div>
-        </footer>
-      </div>
-
-      {/* Configuration Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[80vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">
-                Configure {selectedNode?.data.title}
-              </h2>
-              <button
-                onClick={() => setShowModal(false)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Action Prompt
-                </label>
-                <p className="text-sm text-gray-500 mb-3">
-                  Describe what this {selectedNode?.data.type} action should do. Be specific about conditions, amounts, and triggers.
-                </p>
-                <textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder={`Example: ${getPromptExample(selectedNode?.data.type)}`}
-                  className="w-full h-32 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-                />
-              </div>
-
-              {/* Chat-like suggestions */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="text-sm font-medium text-gray-700 mb-2">💡 Suggestions:</h3>
-                <div className="space-y-1 text-sm text-gray-600">
-                  {getPromptSuggestions(selectedNode?.data.type).map((suggestion, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setPrompt(suggestion)}
-                      className="block w-full text-left p-2 hover:bg-white rounded border-l-2 border-blue-300 hover:border-blue-500 transition-colors"
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-3 pt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowModal(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={saveNodePrompt}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                  disabled={!prompt.trim()}
-                >
-                  Save Configuration
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
-}
-
-// Helper functions for modal suggestions
-function getPromptExample(nodeType?: string): string {
-  switch (nodeType) {
-    case 'transfer': return 'Transfer 100 USDT to wallet 0x123... when portfolio value > $1000';
-    case 'swap': return 'Swap 50% of SEI to USDT when SEI price > $0.50';
-    case 'strategy': return 'Execute DCA strategy: buy $100 of BTC every week';
-    case 'condition': return 'Check if portfolio value is above $5000 and BTC dominance > 50%';
-    case 'stake': return 'Stake 1000 SEI tokens in validator pool with 12% APY';
-    case 'notification': return 'Send email alert when trade is executed with profit/loss details';
-    case 'merge': return 'Combine multiple signals before executing action';
-    case 'split': return 'Distribute funds across multiple strategies based on risk level';
-    default: return 'Describe the action this node should perform...';
-  }
-}
-
-function getPromptSuggestions(nodeType?: string): string[] {
-  switch (nodeType) {
-    case 'transfer':
-      return [
-        'Transfer 10% of portfolio to cold storage when total value > $10,000',
-        'Send 100 USDT to trading account every Monday',
-        'Transfer profits to savings wallet when daily gain > 5%'
-      ];
-    case 'swap':
-      return [
-        'Swap 25% of SEI to USDT when SEI price drops below $0.40',
-        'Exchange all USDT to BTC when BTC price < $40,000',
-        'Swap 50% holdings to stablecoin when market volatility > 15%'
-      ];
-    case 'strategy':
-      return [
-        'Dollar Cost Average: Buy $100 BTC weekly regardless of price',
-        'Momentum strategy: Buy when 7-day MA crosses above 21-day MA',
-        'Mean reversion: Sell when RSI > 70, buy when RSI < 30'
-      ];
-    case 'condition':
-      return [
-        'Portfolio value > $5000 AND Bitcoin dominance > 50%',
-        'Daily volume > 1M AND price volatility < 10%',
-        'Fear & Greed index < 25 (Extreme Fear)'
-      ];
-    case 'stake':
-      return [
-        'Stake 1000 SEI with validator offering highest rewards',
-        'Auto-compound staking rewards weekly',
-        'Unstake 50% if validator performance drops below 95%'
-      ];
-    case 'merge':
-      return [
-        'Wait for both technical and fundamental signals',
-        'Combine price alert with volume confirmation',
-        'Merge multiple risk checks before proceeding'
-      ];
-    case 'split':
-      return [
-        'Split investment: 60% BTC, 30% ETH, 10% altcoins',
-        'Distribute based on risk: Conservative/Moderate/Aggressive',
-        'Split profits: 70% reinvest, 20% save, 10% withdraw'
-      ];
-    default:
-      return ['Configure this action with specific parameters'];
-  }
 }

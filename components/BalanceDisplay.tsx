@@ -74,16 +74,16 @@ export default function BalanceDisplay({
   );
 
   return (
-    <Card className="w-full max-w-4xl mx-auto border-green-200 bg-gradient-to-r from-green-50 to-emerald-50">
+    <Card className="w-full max-w-4xl mx-auto border-orange-200 bg-gradient-to-r from-orange-50 to-red-50">
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-              <Wallet className="w-5 h-5 text-green-600" />
+            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
+              <Wallet className="w-5 h-5 text-orange-600" />
             </div>
             <div>
-              <CardTitle className="text-lg text-green-800">Wallet Balance</CardTitle>
-              <p className="text-sm text-green-600 mt-1">
+              <CardTitle className="text-lg text-orange-800">Wallet Balance</CardTitle>
+              <p className="text-sm text-orange-600 mt-1">
                 {balanceInfo.totalTokens} assets • SEI Network
               </p>
             </div>
@@ -101,6 +101,7 @@ export default function BalanceDisplay({
               size="sm"
               onClick={onRefreshBalance}
               disabled={isRefreshing}
+              className="border-orange-200 text-orange-700 hover:bg-orange-50"
             >
               {isRefreshing ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
@@ -114,7 +115,7 @@ export default function BalanceDisplay({
 
       <CardContent className="space-y-6">
         {/* Wallet Address */}
-        <div className="bg-white rounded-lg p-4 border border-green-200">
+        <div className="bg-white rounded-lg p-4 border border-orange-200 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600 mb-1">Wallet Address</p>
@@ -126,6 +127,7 @@ export default function BalanceDisplay({
               variant="ghost"
               size="sm"
               onClick={() => copyToClipboard(balanceInfo.address)}
+              className="text-orange-600 hover:bg-orange-50"
             >
               <Copy className="w-4 h-4" />
             </Button>
@@ -133,7 +135,7 @@ export default function BalanceDisplay({
         </div>
 
         {/* SEI Balance Highlight */}
-        <div className="bg-gradient-to-r from-blue-500 to-indigo-500 rounded-lg p-6 text-white">
+        <div className="bg-gradient-to-r from-orange-500 to-red-500 rounded-lg p-6 text-white shadow-lg">
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2 mb-2">
@@ -170,15 +172,16 @@ export default function BalanceDisplay({
         </div>
 
         {/* Token Balances Grid */}
-        {nonZeroBalances.length > 1 && (
-          <div>
-            <div className="flex items-center gap-2 mb-4">
-              <Coins className="w-5 h-5 text-green-600" />
-              <h3 className="font-semibold text-green-800">Token Balances</h3>
-            </div>
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <Coins className="w-5 h-5 text-orange-600" />
+            <h3 className="font-semibold text-orange-800">Token Balances</h3>
+          </div>
+          
+          {nonZeroBalances.length > 1 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {nonZeroBalances.filter(token => token.symbol !== 'SEI').map((token) => (
-                <div key={token.address} className="bg-white rounded-lg p-4 border border-green-200 hover:border-green-300 transition-colors">
+                <div key={token.address} className="bg-white rounded-lg p-4 border border-orange-200 hover:border-orange-300 transition-colors shadow-sm hover:shadow-md">
                   <div className="flex items-center gap-3">
                     <img 
                       src={token.logoURI} 
@@ -206,26 +209,34 @@ export default function BalanceDisplay({
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-6 text-center">
+              <div className="text-orange-600 mb-2">
+                <Coins className="w-8 h-8 mx-auto" />
+              </div>
+              <p className="text-orange-800 font-medium">Only SEI in wallet</p>
+              <p className="text-sm text-orange-600 mt-1">No other ERC20 tokens found with balance</p>
+            </div>
+          )}
+        </div>
 
         {/* Summary Stats */}
-        <div className="bg-white rounded-lg p-4 border border-green-200">
+        <div className="bg-white rounded-lg p-4 border border-orange-200 shadow-sm">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
             <div>
-              <div className="text-2xl font-bold text-green-600">
+              <div className="text-2xl font-bold text-orange-600">
                 {nonZeroBalances.length}
               </div>
               <div className="text-sm text-gray-600">Active Tokens</div>
             </div>
             <div>
-              <div className="text-2xl font-bold text-blue-600">
+              <div className="text-2xl font-bold text-red-600">
                 {formatBalance(balanceInfo.seiBalance)}
               </div>
               <div className="text-sm text-gray-600">SEI Balance</div>
             </div>
             <div>
-              <div className="text-2xl font-bold text-purple-600">
+              <div className="text-2xl font-bold text-orange-500">
                 {nonZeroBalances.filter(token => token.symbol !== 'SEI').length}
               </div>
               <div className="text-sm text-gray-600">ERC20 Tokens</div>
@@ -234,7 +245,7 @@ export default function BalanceDisplay({
         </div>
 
         {/* Last Updated */}
-        <div className="flex items-center justify-between text-sm text-gray-600 bg-white rounded-lg p-3 border border-green-200">
+        <div className="flex items-center justify-between text-sm text-gray-600 bg-white rounded-lg p-3 border border-orange-200 shadow-sm">
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4" />
             <span>Last updated: {formatTimestamp(balanceInfo.timestamp)}</span>

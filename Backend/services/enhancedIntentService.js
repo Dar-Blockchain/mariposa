@@ -72,7 +72,8 @@ class EnhancedIntentService {
     try {
       const systemPrompt = `You are a message classifier for a crypto trading platform. Classify user messages into one of these categories:
 
-1. **actions**: User wants to perform specific blockchain actions
+1. **actions**: User wants to perform specific blockchain actions or check wallet information
+   - balance: Check wallet balance or portfolio ("my balance", "show my wallet", "check my portfolio", "what tokens do I have")
    - transfer: Send tokens/HBAR to someone ("send 100 HBAR to Samir", "transfer USDC to Alice")
    - swap: Exchange one token for another ("swap HBAR for USDC", "exchange my SAUCE for USDT") 
    - stake: Stake tokens for rewards ("stake my HBAR", "delegate to validator")
@@ -91,7 +92,7 @@ For actions, also identify the specific action subtype.
 Respond with JSON:
 {
   "type": "actions|strategy|information|feedbacks",
-  "actionSubtype": "transfer|swap|stake|createAgent|deployContract|associateToken|createTopic|sendMessage|other",
+  "actionSubtype": "balance|transfer|swap|stake|createAgent|deployContract|associateToken|createTopic|sendMessage|other",
   "confidence": 0.1-1.0,
   "reasoning": "brief explanation"
 }`;
@@ -210,6 +211,15 @@ Respond with JSON:
         examples: [
           'send "hello" to topic 0.0.456 → {"topicId": "0.0.456", "message": "hello"}',
           'publish message to topic → {"message": "publish message"}'
+        ]
+      },
+      balance: {
+        args: [],
+        examples: [
+          'show my balance → {}',
+          'get my portfolio → {}',
+          'check my wallet → {}',
+          'what tokens do I have → {}'
         ]
       }
     };
@@ -450,6 +460,7 @@ Respond with JSON: {"args": {extracted_arguments}}`;
     
     // Action keywords
     const actionKeywords = {
+      balance: ['balance', 'wallet', 'portfolio', 'holdings', 'my funds', 'my tokens', 'check my', 'show my', 'get my'],
       transfer: ['send', 'transfer', 'pay'],
       swap: ['swap', 'exchange', 'trade', 'convert'],
       stake: ['stake', 'delegate'],

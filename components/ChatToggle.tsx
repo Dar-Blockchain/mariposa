@@ -11,67 +11,51 @@ export default function ChatToggle() {
   const [useEnhanced, setUseEnhanced] = useState(true);
 
   return (
-    <div className="h-screen flex flex-col">
-      {/* Toggle Header */}
-      <div className="bg-white border-b border-gray-200 p-4 shadow-sm">
+    <div className="h-screen flex flex-col bg-white">
+      {/* Minimalist Header */}
+      <div className="border-b border-gray-100 px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold text-gray-800">Master Agent Chat</h1>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={!useEnhanced ? "default" : "outline"}
-                size="sm"
-                onClick={() => setUseEnhanced(false)}
-                className="flex items-center gap-2"
-              >
-                <Bot className="w-4 h-4" />
-                Classic
-              </Button>
-              <Button
-                variant={useEnhanced ? "default" : "outline"}
-                size="sm"
-                onClick={() => setUseEnhanced(true)}
-                className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white border-0"
-              >
-                <Sparkles className="w-4 h-4" />
-                Enhanced
-                <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 ml-1">
-                  New
-                </Badge>
-              </Button>
-            </div>
-          </div>
-          
           <div className="flex items-center gap-3">
-            <div className="text-sm text-gray-600">
-              {useEnhanced ? (
-                <div className="flex items-center gap-2">
-                  <Eye className="w-4 h-4 text-blue-600" />
-                  <span>Beautiful visualizations for information responses</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Settings className="w-4 h-4 text-gray-600" />
-                  <span>Classic chat interface</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        
-        {useEnhanced && (
-          <div className="max-w-4xl mx-auto mt-3 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
-            <div className="flex items-center gap-3">
-              <Sparkles className="w-5 h-5 text-blue-600" />
-              <div>
-                <p className="text-sm font-medium text-blue-800">Enhanced Mode Features:</p>
-                <p className="text-xs text-blue-600 mt-1">
-                  ✨ Beautiful information visualizations • 📊 Rich market data cards • 🎯 Processing pipeline display • 🔍 Enhanced API integration
-                </p>
+            <img 
+              src="/mariposa-logo.png" 
+              alt="Mariposa" 
+              className="w-8 h-8"
+            />
+            <div>
+              <h1 className="text-lg font-semibold bg-gradient-to-r from-gray-900 via-orange-600 to-red-600 bg-clip-text text-transparent">Mariposa</h1>
+              <div className="flex items-center gap-1 text-xs text-gray-500">
+                <div className="w-1.5 h-1.5 bg-orange-500 rounded-full"></div>
+                AI Assistant
               </div>
             </div>
           </div>
-        )}
+          
+          {/* Clean Toggle */}
+          <div className="flex items-center bg-gray-50 rounded-lg p-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setUseEnhanced(false)}
+              className={`text-xs px-3 py-1.5 rounded-md transition-all ${
+                !useEnhanced ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Bot className="w-3 h-3 mr-1.5" />
+              Classic
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setUseEnhanced(true)}
+              className={`text-xs px-3 py-1.5 rounded-md transition-all ${
+                useEnhanced ? 'bg-gradient-to-r from-orange-500 to-red-500 shadow-sm text-white' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Sparkles className="w-3 h-3 mr-1.5" />
+              Enhanced
+            </Button>
+          </div>
+        </div>
       </div>
 
       {/* Chat Component */}

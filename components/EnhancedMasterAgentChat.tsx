@@ -66,6 +66,7 @@ import { MockDataButtons, mockInformationResponses } from './MockDataDisplay';
 import InteractiveArgumentComponents from './InteractiveArgumentComponents';
 import FundingQRDisplay from './FundingQRDisplay';
 import TransferConfirmation from './TransferConfirmation';
+import BalanceDisplay from './BalanceDisplay';
 import { cn } from '@/lib/utils';
 
 interface Message {
@@ -94,6 +95,9 @@ interface Message {
   token?: string;
   requiresTransferConfirmation?: boolean;
   transferDetails?: any;
+  isBalanceResponse?: boolean;
+  balanceData?: any;
+  isRecommendationResponse?: boolean;
 }
 
 interface ProcessingStep {
@@ -120,17 +124,9 @@ export default function EnhancedMasterAgentChat() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      content: `🌟 **Welcome to Enhanced Master Agent**
+      content: `Welcome to your sophisticated crypto intelligence platform. I'm your dedicated AI analyst, specializing in advanced market research, strategic trading insights, and comprehensive token analysis across the SEI-EVM ecosystem.
 
-I'm your comprehensive AI assistant for cryptocurrency and trading intelligence. I specialize in providing detailed, actionable information with beautiful visualizations.
-
-**What I can help you with:**
-🔍 **Market Intelligence** - Real-time data, price analysis, trends
-📊 **Portfolio Insights** - Performance analysis, optimization tips  
-🎯 **Trading Guidance** - Strategy recommendations, risk assessment
-🌐 **Crypto Education** - Explanations, tutorials, best practices
-
-Ask me anything about crypto markets, and I'll provide rich, detailed insights!`,
+I provide institutional-grade analysis including risk assessment, portfolio optimization, technical indicators, and real-time market intelligence. How may I assist with your investment strategy today?`,
       sender: 'agent',
       timestamp: new Date()
     }
@@ -164,6 +160,13 @@ Ask me anything about crypto markets, and I'll provide rich, detailed insights!`
   useEffect(() => {
     scrollToBottom();
   }, [messages, isTyping]);
+
+  // Simple function to detect if user asked for token recommendations
+  const isRecommendationRequest = (message: string) => {
+    const lowerMessage = message.toLowerCase();
+    const recommendationKeywords = ['recommend', 'suggest', 'invest', 'buy', 'portfolio', 'tokens to', 'which tokens', 'best tokens'];
+    return recommendationKeywords.some(keyword => lowerMessage.includes(keyword));
+  };
 
   const callAgentRoute = async (message: string) => {
     try {
@@ -409,6 +412,29 @@ Ask me anything about crypto markets, and I'll provide rich, detailed insights!`
   const handleRefreshBalance = async (messageId: string) => {
     console.log('Refreshing balance for message:', messageId);
     
+    const message = messages.find(m => m.id === messageId);
+    if (!message) return;
+    
+    // Check if this is a balance display refresh vs funding check
+    if (message.isBalanceResponse) {
+      // This is a balance display refresh - trigger a new balance check
+      try {
+        const result = await callEnhancedIntent("get my balance");
+        if (result.success && result.type === 'balance' && result.data?.execution?.balanceDetails) {
+          // Update the message with new balance data
+          setMessages(prev => prev.map(m => 
+            m.id === messageId 
+              ? { ...m, balanceData: result.data.execution.balanceDetails }
+              : m
+          ));
+        }
+      } catch (error) {
+        console.error('Balance refresh error:', error);
+      }
+      return;
+    }
+    
+    // Original funding check logic
     // Update the message to show checking status
     setMessages(prev => prev.map(m => 
       m.id === messageId 
@@ -418,7 +444,6 @@ Ask me anything about crypto markets, and I'll provide rich, detailed insights!`
 
     try {
       // Call the same interactive response endpoint to check if balance is now sufficient
-      const message = messages.find(m => m.id === messageId);
       if (message?.originalIntent) {
         let result;
         
@@ -722,6 +747,109 @@ Ask me anything about crypto markets, and I'll provide rich, detailed insights!`
             return;
           }
 
+          // Handle balance requests from actionComplete response
+          if (type === 'actionComplete' && data.actionResult?.actionType === 'balance' && data.actionResult?.success) {
+            console.log('Handling successful balance request from actionComplete');
+            const balanceMessage: Message = {
+              id: (Date.now() + 1).toString(),
+              content: `💰 **Your Wallet Balance**\n\n**Address:** ${data.actionResult.balanceDetails.address}\n**SEI Balance:** ${data.actionResult.balanceDetails.seiBalance} SEI\n**Total Tokens:** ${data.actionResult.balanceDetails.totalTokens}\n\nSee detailed breakdown below:`,
+              sender: 'agent',
+              timestamp: new Date(),
+              classification: {
+                category: 'balance',
+                reason: 'Balance information retrieved'
+              },
+              responseData: data,
+              isBalanceResponse: true,
+              balanceData: data.actionResult.balanceDetails,
+              processingSteps: [...processingSteps]
+            };
+            
+            updateProcessingStep('intent_analysis', { status: 'completed' });
+            updateProcessingStep('formatting', { status: 'completed' });
+            setMessages(prev => [...prev, balanceMessage]);
+            setIsTyping(false);
+            setProcessingSteps([]);
+            return;
+          }
+
+          // Handle action errors (including balance failures)
+          if (type === 'actionError') {
+            console.log('Handling action error from enhanced intent');
+            const actionType = data.intent?.extraction?.actionType || 'action';
+            const errorMessage: Message = {
+              id: (Date.now() + 1).toString(),
+              content: `❌ **${actionType.toUpperCase()} Failed**\n\n**Error:** ${data.error}\n\n${actionType === 'balance' ? 'Please make sure you have an active agent set up and try again.' : 'Please check your request and try again.'}`,
+              sender: 'agent',
+              timestamp: new Date(),
+              classification: {
+                category: 'error',
+                reason: `${actionType} execution failed`
+              },
+              responseData: data,
+              processingSteps: [...processingSteps]
+            };
+            
+            updateProcessingStep('intent_analysis', { status: 'completed' });
+            updateProcessingStep('formatting', { status: 'completed' });
+            setMessages(prev => [...prev, errorMessage]);
+            setIsTyping(false);
+            setProcessingSteps([]);
+            return;
+          }
+
+          // Handle balance requests from actions response
+          if (type === 'actions' && enhancedResponse.subtype === 'balance' && data.result?.executionStatus === 'completed' && data.result?.execution?.success) {
+            console.log('Handling successful balance request from actions response');
+            const balanceMessage: Message = {
+              id: (Date.now() + 1).toString(),
+              content: `💰 **Your Wallet Balance**\n\n**Address:** ${data.result.execution.balanceDetails.address}\n**SEI Balance:** ${data.result.execution.balanceDetails.seiBalance} SEI\n**Total Tokens:** ${data.result.execution.balanceDetails.totalTokens}\n\nSee detailed breakdown below:`,
+              sender: 'agent',
+              timestamp: new Date(),
+              classification: {
+                category: 'balance',
+                reason: 'Balance information retrieved'
+              },
+              responseData: data,
+              isBalanceResponse: true,
+              balanceData: data.result.execution.balanceDetails,
+              processingSteps: [...processingSteps]
+            };
+            
+            updateProcessingStep('intent_analysis', { status: 'completed' });
+            updateProcessingStep('formatting', { status: 'completed' });
+            setMessages(prev => [...prev, balanceMessage]);
+            setIsTyping(false);
+            setProcessingSteps([]);
+            return;
+          }
+
+          // Handle balance requests (legacy format)
+          if (type === 'balance' && data.executionStatus === 'completed' && data.execution?.success) {
+            console.log('Handling successful balance request from enhanced intent');
+            const balanceMessage: Message = {
+              id: (Date.now() + 1).toString(),
+              content: `💰 **Your Wallet Balance**\n\n**Address:** ${data.execution.balanceDetails.address}\n**SEI Balance:** ${data.execution.balanceDetails.seiBalance} SEI\n**Total Tokens:** ${data.execution.balanceDetails.totalTokens}\n\nSee detailed breakdown below:`,
+              sender: 'agent',
+              timestamp: new Date(),
+              classification: {
+                category: 'balance',
+                reason: 'Balance information retrieved'
+              },
+              responseData: data,
+              isBalanceResponse: true,
+              balanceData: data.execution.balanceDetails,
+              processingSteps: [...processingSteps]
+            };
+            
+            updateProcessingStep('intent_analysis', { status: 'completed' });
+            updateProcessingStep('formatting', { status: 'completed' });
+            setMessages(prev => [...prev, balanceMessage]);
+            setIsTyping(false);
+            setProcessingSteps([]);
+            return;
+          }
+
           // Handle failed swap execution
           if (type === 'swap' && data.executionStatus === 'failed' && data.execution?.error) {
             console.log('Handling failed swap execution from enhanced intent');
@@ -836,6 +964,36 @@ Ask me anything about crypto markets, and I'll provide rich, detailed insights!`
             return;
           }
 
+          // Handle successful balance check from agent route
+          if (responseData.processing?.type === 'actions' && 
+              responseData.processing?.subtype === 'balance' &&
+              responseData.processing?.result?.executionStatus === 'completed' && 
+              responseData.processing?.result?.execution?.success) {
+            console.log('Handling successful balance request from agent route');
+            const balanceData = responseData.processing.result.execution.balanceDetails;
+            const balanceMessage: Message = {
+              id: (Date.now() + 1).toString(),
+              content: `💰 **Your Wallet Balance**\n\n**Address:** ${balanceData.address}\n**SEI Balance:** ${balanceData.seiBalance} SEI\n**Total Tokens:** ${balanceData.totalTokens}\n\nSee detailed breakdown below:`,
+              sender: 'agent',
+              timestamp: new Date(),
+              classification: {
+                category: 'balance',
+                reason: 'Balance information retrieved'
+              },
+              responseData: responseData,
+              isBalanceResponse: true,
+              balanceData: balanceData,
+              processingSteps: [...processingSteps]
+            };
+            
+            updateProcessingStep('agent_route', { status: 'completed' });
+            updateProcessingStep('formatting', { status: 'completed' });
+            setMessages(prev => [...prev, balanceMessage]);
+            setIsTyping(false);
+            setProcessingSteps([]);
+            return;
+          }
+
           // Handle successful swap execution from agent route
           if (responseData.processing?.type === 'swap' && 
               responseData.processing?.result?.executionStatus === 'completed' && 
@@ -858,6 +1016,33 @@ Ask me anything about crypto markets, and I'll provide rich, detailed insights!`
             updateProcessingStep('agent_route', { status: 'completed' });
             updateProcessingStep('formatting', { status: 'completed' });
             setMessages(prev => [...prev, swapSuccessMessage]);
+            setIsTyping(false);
+            setProcessingSteps([]);
+            return;
+          }
+
+          // Handle failed balance check from agent route
+          if (responseData.processing?.type === 'actions' && 
+              responseData.processing?.subtype === 'balance' &&
+              responseData.processing?.result?.executionStatus === 'failed' && 
+              responseData.processing?.result?.execution?.error) {
+            console.log('Handling failed balance request from agent route');
+            const errorMessage: Message = {
+              id: (Date.now() + 1).toString(),
+              content: `❌ **Balance Check Failed**\n\n**Error:** ${responseData.processing.result.execution.error}\n\nPlease make sure you have an active agent set up and try again.`,
+              sender: 'agent',
+              timestamp: new Date(),
+              classification: {
+                category: 'error',
+                reason: 'Balance check failed'
+              },
+              responseData: responseData,
+              processingSteps: [...processingSteps]
+            };
+            
+            updateProcessingStep('agent_route', { status: 'completed' });
+            updateProcessingStep('formatting', { status: 'completed' });
+            setMessages(prev => [...prev, errorMessage]);
             setIsTyping(false);
             setProcessingSteps([]);
             return;
@@ -908,7 +1093,8 @@ Ask me anything about crypto markets, and I'll provide rich, detailed insights!`
           classification: responseData.classification,
           responseData: responseData,
           processingSteps: [...processingSteps],
-          isInformationResponse: isInformationCategory
+          isInformationResponse: isInformationCategory,
+          isRecommendationResponse: isRecommendationRequest(currentMessage)
         };
 
         updateProcessingStep('formatting', { status: 'completed' });
@@ -1201,27 +1387,8 @@ Ask me anything about crypto markets, and I'll provide rich, detailed insights!`
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 p-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-              <Brain className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-800">Enhanced Master Agent</h1>
-              <p className="text-sm text-gray-600">Intelligent Crypto Assistant</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="bg-green-100 text-green-800">
-              <Activity className="w-3 h-3 mr-1" />
-              Online
-            </Badge>
-          </div>
-        </div>
-      </div>
+    <div className="flex flex-col h-screen bg-white">
+      {/* Clean, minimal header - removed completely for minimalism */}
 
       {/* Messages */}
       <ScrollArea className="flex-1 p-4">
@@ -1232,69 +1399,37 @@ Ask me anything about crypto markets, and I'll provide rich, detailed insights!`
               className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div className={`max-w-[85%] ${message.sender === 'user' ? 'order-2' : 'order-1'}`}>
-                {/* Message Bubble */}
+                {/* Clean Message Bubble */}
                 <div
-                  className={`rounded-2xl p-4 shadow-sm ${
+                  className={`rounded-2xl px-4 py-3 max-w-2xl ${
                     message.sender === 'user'
-                      ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white ml-4'
-                      : 'bg-white border border-gray-200 mr-4'
+                      ? 'bg-gradient-to-r from-orange-600 to-red-600 text-white ml-4 shadow-md'
+                      : 'bg-gray-50 text-gray-900 mr-4'
                   }`}
                 >
-                  {/* Sender Info */}
-                  <div className="flex items-center gap-2 mb-2">
-                    {message.sender === 'user' ? (
-                      <User className="w-4 h-4" />
-                    ) : (
-                      <Bot className="w-4 h-4 text-blue-600" />
-                    )}
-                    <span className={`text-xs font-medium ${
-                      message.sender === 'user' ? 'text-blue-100' : 'text-gray-600'
-                    }`}>
-                      {message.sender === 'user' ? 'You' : 'Enhanced Agent'}
-                    </span>
-                    <span className={`text-xs ${
-                      message.sender === 'user' ? 'text-blue-200' : 'text-gray-400'
-                    }`}>
-                      {message.timestamp.toLocaleTimeString()}
-                    </span>
+
+                  {/* Clean Message Content */}
+                  <div className="whitespace-pre-wrap leading-relaxed">
+                    {message.content}
                   </div>
-
-                  {/* Message Content */}
-                  <div className={`prose prose-sm max-w-none ${
-                    message.sender === 'user' ? 'prose-invert' : ''
-                  }`}>
-                    <div className="whitespace-pre-wrap">
-                      {message.content}
-                    </div>
-                  </div>
-
-                  {/* Classification Badge */}
-                  {message.classification && message.sender === 'agent' && (
-                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200">
-                      {getClassificationIcon(message.classification.category)}
-                      <span className="text-xs font-medium text-gray-600">
-                        {message.classification.category}
-                      </span>
-                      {message.classification.confidence && (
-                        <span className="text-xs text-gray-500">
-                          ({Math.round(message.classification.confidence * 100)}%)
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Copy Button */}
+                  
+                  {/* Professional Agent Signature */}
                   {message.sender === 'agent' && (
-                    <div className="flex justify-end mt-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyMessage(message.content)}
-                        className="h-6 px-2 text-xs text-gray-500 hover:text-gray-700"
-                      >
-                        <Copy className="w-3 h-3 mr-1" />
-                        Copy
-                      </Button>
+                    <div className="mt-3 pt-2 border-t border-orange-100/50">
+                      <div className="flex items-center justify-between text-xs text-gray-500">
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <img src="/mariposa-logo.png" alt="Mariposa" className="w-3 h-3" />
+                            <span className="font-medium text-orange-600">Mariposa AI</span>
+                          </div>
+                          <div className="w-1 h-1 bg-orange-300 rounded-full"></div>
+                          <span>SEI-EVM Specialist</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-pulse"></div>
+                          <span className="text-orange-600">Live</span>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1333,22 +1468,51 @@ Ask me anything about crypto markets, and I'll provide rich, detailed insights!`
                   </div>
                 )}
 
+                {/* Balance Display for Balance Requests */}
+                {message.isBalanceResponse && message.balanceData && (
+                  <div className="mt-4">
+                    <BalanceDisplay
+                      balanceInfo={message.balanceData}
+                      onRefreshBalance={() => handleRefreshBalance(message.id)}
+                      isRefreshing={false}
+                    />
+                  </div>
+                )}
+
                 {/* Enhanced Information Response */}
                 {message.sender === 'agent' && message.isInformationResponse && (
                   <InformationResponseCard message={message} />
                 )}
+
+                {/* Simple Execute Strategy Button for Token Recommendations */}
+                {message.sender === 'agent' && message.isRecommendationResponse && (
+                  <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Target className="w-4 h-4 text-blue-600" />
+                        <span className="text-sm font-medium text-blue-900">
+                          Would you like to execute this recommendation as a strategy?
+                        </span>
+                      </div>
+                      <Button
+                        onClick={() => {
+                          setNewMessage("Yes, please help me execute this recommendation as an automated strategy");
+                        }}
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        <Zap className="w-3 h-3 mr-1" />
+                        Execute Strategy
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
               </div>
             </div>
           ))}
 
-          {/* Mock Data Buttons - Show after welcome message */}
-          {showMockButtons && messages.length === 1 && (
-            <div className="flex justify-start">
-              <div className="max-w-[85%] mr-4">
-                <MockDataButtons onSelectMock={handleMockDataSelection} />
-              </div>
-            </div>
-          )}
+          {/* Removed mock data buttons for minimalism */}
 
           {/* Processing Steps */}
           {isTyping && processingSteps.length > 0 && (
@@ -1359,17 +1523,16 @@ Ask me anything about crypto markets, and I'll provide rich, detailed insights!`
             </div>
           )}
 
-          {/* Typing Indicator */}
+          {/* Clean Typing Indicator */}
           {isTyping && (
             <div className="flex justify-start">
-              <div className="bg-white border border-gray-200 rounded-2xl p-4 mr-4 shadow-sm">
+              <div className="bg-gray-50 rounded-2xl px-4 py-3 mr-4 max-w-2xl">
                 <div className="flex items-center gap-2">
-                  <Bot className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm text-gray-600">Enhanced Agent is thinking</span>
+                  <span className="text-sm text-gray-600">Analyzing market data</span>
                   <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                    <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce"></div>
+                    <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                    <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                   </div>
                 </div>
               </div>
@@ -1380,146 +1543,54 @@ Ask me anything about crypto markets, and I'll provide rich, detailed insights!`
         </div>
       </ScrollArea>
 
-      {/* Input Section */}
-      <div className="bg-white border-t border-gray-200 p-4 shadow-lg">
-        <div className="max-w-4xl mx-auto">
+      {/* Minimalist Input Section */}
+      <div className="border-t border-gray-100 bg-white">
+        <div className="max-w-4xl mx-auto p-4">
           <div className="relative">
             <Input
               type="text"
-              placeholder="Ask me anything about crypto markets..."
+              placeholder="Describe your investment inquiry, market analysis needs, or trading strategy question..."
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               onKeyPress={handleKeyPress}
               disabled={isTyping}
-              className="pr-12 h-12 text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-xl"
+              className="w-full h-12 pl-4 pr-12 rounded-xl border border-gray-200 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 placeholder:text-gray-500 text-sm"
             />
             <Button
               onClick={handleSendMessage}
               disabled={!newMessage.trim() || isTyping}
-              className="absolute right-1 top-1/2 transform -translate-y-1/2 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-lg h-10 w-10 p-0"
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 rounded-lg disabled:opacity-50 shadow-md hover:shadow-lg transition-all"
             >
-              <Send className="w-4 h-4" />
+              {isTyping ? (
+                <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Send className="w-3 h-3" />
+              )}
             </Button>
           </div>
           
-          {/* Enhanced Quick Actions */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
-            {/* Risk-Based Shortcuts */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setNewMessage('tokens without risk on sei-evm')}
-              className="text-xs flex items-center gap-1 justify-start"
-            >
-              <Shield className="w-3 h-3 text-green-600" />
-              <span>Safe Tokens</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setNewMessage('high risk tokens with high potential on sei-evm')}
-              className="text-xs flex items-center gap-1 justify-start"
-            >
-              <TrendingUp className="w-3 h-3 text-red-600" />
-              <span>High Risk</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setNewMessage('new tokens on sei-evm network')}
-              className="text-xs flex items-center gap-1 justify-start"
-            >
-              <Star className="w-3 h-3 text-blue-600" />
-              <span>New Tokens</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setNewMessage('sei-evm market analysis and trends')}
-              className="text-xs flex items-center gap-1 justify-start"
-            >
-              <BarChart3 className="w-3 h-3 text-purple-600" />
-              <span>Market Analysis</span>
-            </Button>
-            
-            {/* Token Type Shortcuts */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setNewMessage('stablecoins on sei-evm')}
-              className="text-xs flex items-center gap-1 justify-start"
-            >
-              <DollarSign className="w-3 h-3 text-green-600" />
-              <span>Stablecoins</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setNewMessage('defi tokens on sei-evm')}
-              className="text-xs flex items-center gap-1 justify-start"
-            >
-              <Coins className="w-3 h-3 text-indigo-600" />
-              <span>DeFi Tokens</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setNewMessage('meme tokens on sei-evm')}
-              className="text-xs flex items-center gap-1 justify-start"
-            >
-              <Activity className="w-3 h-3 text-orange-600" />
-              <span>Meme Tokens</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setNewMessage('wrapped tokens like WETH WBTC on sei-evm')}
-              className="text-xs flex items-center gap-1 justify-start"
-            >
-              <ArrowUpDown className="w-3 h-3 text-gray-600" />
-              <span>Wrapped</span>
-            </Button>
-          </div>
-          
-          {/* Additional Quick Actions Row */}
-          <div className="flex flex-wrap gap-2 mt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setNewMessage('What is the current SEI price?')}
-              className="text-xs"
-            >
-              <TrendingUp className="w-3 h-3 mr-1" />
-              SEI Price
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setNewMessage('Explain how sei-evm works')}
-              className="text-xs"
-            >
-              <Info className="w-3 h-3 mr-1" />
-              SEI Guide
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setNewMessage('portfolio recommendations for sei-evm')}
-              className="text-xs"
-            >
-              <Target className="w-3 h-3 mr-1" />
-              Portfolio Tips
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setNewMessage('best trading strategies for sei-evm')}
-              className="text-xs"
-            >
-              <Zap className="w-3 h-3 mr-1" />
-              Strategies
-            </Button>
-          </div>
+          {/* Professional Quick Suggestions */}
+          {messages.length <= 1 && (
+            <div className="mt-4">
+              <div className="text-xs text-gray-500 mb-2 font-medium">Professional Analysis Templates:</div>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  "Show my complete portfolio balance and holdings",
+                  "Get my SEI balance and all token assets", 
+                  "Market sentiment analysis with technical indicators",
+                  "Portfolio optimization recommendations"
+                ].map((suggestion, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setNewMessage(suggestion)}
+                    className="text-xs px-3 py-1.5 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-lg text-gray-700 hover:text-orange-900 transition-all duration-200 hover:scale-[1.02] hover:border-orange-300"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
