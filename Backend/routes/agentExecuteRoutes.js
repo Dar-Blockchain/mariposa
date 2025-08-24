@@ -1,7 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Agent = require('../models/Agent');
-const { SimpleAgent } = require('../agent-sdk/dist');
+const { SimpleAgent } = require('@mariposa-plus/agent-sdk');
 const seiAgentService = require('../services/seiAgentService');
 const router = express.Router();
 

@@ -3,7 +3,7 @@ const seiAgentService = require('./seiAgentService');
 const seiMarketDataService = require('./seiMarketDataService');
 const ContactsTokensService = require('./contactsTokensService');
 const Agent = require('../models/Agent');
-const { SimpleAgent } = require('../agent-sdk/dist');
+const { SimpleAgent } = require('@mariposa-plus/agent-sdk');
 
 // Create service instances
 const contactsTokensService = new ContactsTokensService();

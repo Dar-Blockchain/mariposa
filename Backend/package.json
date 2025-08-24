@@ -5,6 +5,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
+    "postinstall": "node fix-agent-sdk.js",
+    "fix-agent-sdk": "node fix-agent-sdk.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
